@@ -51,12 +51,9 @@ For a window $t$:
 - $A_i(t)$: arrivals into step $i$, for $i ∈ \{1,2,3,4,5\}$, where step 5 is the terminal success step.
 - $T_i(t) = A_{i+1}(t)/A_i(t)$ for $i ∈ \{1,2,3,4\}$.
 - End-to-end conversion:
-  $$
-  C(t)
-  = \frac{A_5(t)}{A_1(t)}
-  = \frac{A_5(t)}{A_4(t)} \cdot \frac{A_4(t)}{A_3(t)} \cdot \frac{A_3(t)}{A_2(t)} \cdot \frac{A_2(t)}{A_1(t)}
-  = T_4(t)·T_3(t)·T_2(t)·T_1(t).
-  $$
+  - $C(t) = A_5(t)/A_1(t)$
+  - $= \bigl(A_5(t)/A_4(t)\bigr)\cdot\bigl(A_4(t)/A_3(t)\bigr)\cdot\bigl(A_3(t)/A_2(t)\bigr)\cdot\bigl(A_2(t)/A_1(t)\bigr)$
+  - $= T_1(t)\cdot T_2(t)\cdot T_3(t)\cdot T_4(t)$
 
 Interpretation:
 - Any drop in any $T_i(t)$ shows up as a drop in $C(t)$.
