@@ -22,7 +22,7 @@ The goal is to show a simple way to [model user journeys](https://sre.google/wor
 You can apply this to any multi-step flow by defining steps and transitions on top of metrics.
 
 Most tools already give you some sort of "funnels" that follow a user or session through a flow.
-Funnels are great for one-off analysis by segment (country, device, age, etc.), but
+[Funnels](https://en.wikipedia.org/wiki/Conversion_funnel) are great for one-off analysis by segment (country, device, age, etc.), but
 they usually need a lot of custom work:
 
 - You must define events, pages, and flows by hand.
@@ -30,7 +30,7 @@ they usually need a lot of custom work:
 - You often cannot reuse funnel numbers directly in SLOs, alerts, or code.
 
 This approach takes a different angle: reuse metrics you already have.
-Instead of tracking individual users, we track arrivals and transitions between steps.
+Instead of tracking individual users, we track flows: arrivals and transitions between steps in your services.
 
 What you get from this model:
 
@@ -57,8 +57,8 @@ flow without adding new events or building a new funnel every time.
 - Funnels often need extra events: each step becomes a separate event, which adds instrumentation and schema work.
 - Funnels depend on user identity: session/user ids can be fragile in OAuth flows (redirects, retries, cross-domain hops).
 - Funnels hide the math: you cannot easily write down and reuse the exact formulas behind the numbers.
-- Funnels track unique users and analyse segments; this model tracks flows, which are easier to reason about.
-- Metric-based funnels reuse existing counters, so the same data powers dashboards, SLOs, alerts, and ad-hoc analysis.
+- Funnels track unique users and analyse segments; this model tracks flows, which are often easier to reason about and automate.
+- Metric-based models reuse existing metrics, so the same data powers dashboards, SLOs, alerts, and ad-hoc analysis.
 
 ## Metric definition
 
@@ -121,6 +121,7 @@ This is the practical difference between funnels (tracking each user) and this
 flow-based model (tracking windows). Timing noise matters a lot at low volume
 and tiny windows, but becomes mostly harmless once you have enough users or slightly
 larger windows. The SPC $C(t)$ view lets you ignore this noise and focus on
+real, structural changes in the flow.
 
 
 ### SPC and control limits
@@ -132,6 +133,28 @@ Once you have $C(t)$ over time, you can treat it like a control chart:
 - Alert only when $C(t)$ breaks those limits for a while (not on every small wiggle).
 
 I recommend [Statistical Process Control: A Practitioner’s Guide](https://entropicthoughts.com/statistical-process-control-a-practitioners-guide) as a basic introduction.
+
+How this looks in real flows:
+
+- **Login**
+  - Metric: $C_{\text{login}}(t)$ = fraction of login attempts that end in a valid session.
+  - Control limits: learn the usual range of $C_{\text{login}}(t)$ during normal operation.
+  - Detects: auth outages (IdP down), bad CAPTCHA changes, cookie/session bugs that prevent users from staying logged in.
+
+- **Signup**
+  - Metric: $C_{\text{signup}}(t)$ = fraction of signup starts that end in an activated account.
+  - Control limits: learn the normal band for your best-performing signup flow.
+  - Detects: broken email verification, bad copy or UX experiments around consent/terms, higher friction when adding extra steps.
+
+- **Payment**
+  - Metric: $C_{\text{payment}}(t)$ = fraction of payment attempts that end in a successful charge.
+  - Control limits: use a stable period (no experiments, normal provider behavior) to set the band.
+  - Detects: PSP or bank issues, 3DS/strong-auth failures, currency/price bugs that block transactions.
+
+- **Cart / checkout**
+  - Metric: $C_{\text{checkout}}(t)$ = fraction of carts that end in a completed order.
+  - Control limits: learn the usual conversion for your store (per region or product type, if needed).
+  - Detects: broken shipping/tax calculation, bad discounts or promos, layout changes that accidentally hide key buttons.
 
 
 ## Metric definitions example (4-step flow)
