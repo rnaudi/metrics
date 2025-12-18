@@ -225,7 +225,7 @@ Why this is a good SLO:
 What it shows:
 - X-axis: time windows $t = 1, \dots, 20$.
 - $C(t)$ as a line: first 10 windows use healthy $T_2 \in [0.9, 1.0]$, last 10 use
-  slightly worse $T_2 \in [0.7, 1.0]$ while $T_1, T_3, T_4$ stay healthy.
+  a critical worse $T_2 \in [0.2, 0.5]$ while $T_1, T_3, T_4$ stay healthy.
 - A vertical dashed line at the change point and a dotted horizontal line
   at the baseline $C_1$.
 
