@@ -52,7 +52,7 @@ For a window $t$:
 - $T_i(t) = A_{i+1}(t)/A_i(t)$ for $i ∈ \{1,2,3,4\}$.
 - End-to-end conversion:
   - $C(t) = A_5(t)/A_1(t)$
-  - $= \bigl(A_5(t)/A_4(t)\bigr)\cdot\bigl(A_4(t)/A_3(t)\bigr)\cdot\bigl(A_3(t)/A_2(t)\bigr)\cdot\bigl(A_2(t)/A_1(t)\bigr)$
+  - $= \bigl(A_2(t)/A_1(t)\bigr)\cdot\bigl(A_3(t)/A_2(t)\bigr)\cdot\bigl(A_4(t)/A_3(t)\bigr)\cdot\bigl(A_5(t)/A_4(t)\bigr)$
   - $= T_1(t)\cdot T_2(t)\cdot T_3(t)\cdot T_4(t)$
 
 Interpretation:
