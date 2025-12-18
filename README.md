@@ -1,6 +1,6 @@
 # metrics
 
-Model multi-step user journeys (login, signup, checkout, etc.) using simple request counters and ratios, then monitor end-to-end conversion with control charts.
+Model multi-step user journeys (login, signup, checkout, etc.) using simple request counters and ratios. Watch end-to-end conversion with control charts.
 
 ---
 
@@ -33,12 +33,12 @@ Most tools give you **funnels** based on individual users or sessions. They are 
 - Depend on user/session identity
 - Are awkward to plug directly into SLOs, alerts, and automation
 
-Instead, this repo uses **aggregate metrics only**:
+Instead, this method uses **aggregate metrics only**:
 - Count **requests** per step per window (no user IDs)
 - Derive simple ratios that behave well at high volume
 - Feed them into standard SPC-style monitoring
 
-This makes user journeys **first-class operational signals** with:
+This turns user journeys into **operational signals** with:
 - Low cardinality (few tags, no per-user IDs)
 - Simple math
 - Easy integration in any metrics backend (Prometheus, Datadog, etc.)
@@ -156,7 +156,7 @@ Below is what each plot is meant to show.
 
 ## Advanced notes (optional)
 
-These are implementation details you may care about when productionizing the model.
+These notes help when you roll this out in production.
 
 **Volume and variance**
 - Ratios are mathematically volume-agnostic, but variance shrinks with more traffic.
@@ -197,12 +197,12 @@ $A_i(t)$, $T_i(t)$, and $C(t)$.
 
 ### Conceptual foundation
 
-**Google SRE journey-based SLIs**: Google's [SRE Workbook](https://sre.google/workbook/implementing-slos/#modeling-user-journeys) describes modeling user journeys for SLOs, but provides limited implementation details. This document operationalizes that concept with:
+**Google SRE journey-based SLIs**: Google's [SRE Workbook](https://sre.google/workbook/implementing-slos/#modeling-user-journeys) describes modeling user journeys for SLOs, but provides limited implementation details. Here is one way to apply that idea:
 - Explicit mathematical formulas 
 - Statistical Process Control adaptation for time-windowed metrics
 - Practical guidance on when the approach works and when it doesn't
 
-**Statistical Process Control (SPC)**: Control charts for quality monitoring come from manufacturing. We adapt these techniques to:
+**Statistical Process Control (SPC)**: Control charts for quality monitoring come from manufacturing. We use these ideas for:
 - Time-windowed request flows 
 - Proportions bounded in [0,1] 
 - Systems with variable traffic volume
@@ -247,21 +247,13 @@ $A_i(t)$, $T_i(t)$, and $C(t)$.
 
 ### Closest existing implementation
 
-**Google's internal SRE tools**: Public material describes Google using journey-based SLIs and flow-style metrics internally; this approach is closely aligned with that style (flow-based SLIs with SPC), but their tools are proprietary and not documented. This document is effectively a public-style manual for DIY implementation.
+**Google's internal SRE tools**: Public material describes Google using journey-based SLIs and flow-style metrics internally. This approach is closely aligned with that style (flow-based SLIs with SPC), but their tools are proprietary and not documented.
 
 ### Are we reinventing the wheel?
 
-**No—this is productionizing an under-documented concept.**
+**No.** The pieces already exist:
+- Journey-based SLIs from the SRE world
+- SPC and control charts from manufacturing and quality work
+- Metrics backends like Prometheus, Datadog, and OpenTelemetry
 
-What already exists:
-- **Concept**: Google's SRE Workbook describes journey-based SLIs (high level)
-- **Infrastructure**: OpenTelemetry, Prometheus, Datadog, service meshes that provide the metrics...
-- **Math**: SPC control charts are standard in manufacturing
-
-What's new here:
-- **Explicit formulas**: $C(t) = \prod T_i(t)$ as an SLO
-- **SPC adaptation**: Control charts for time-windowed, bounded proportions
-- **Practical guidance**: When it works (high volume, sequential flows) vs when it doesn't (low volume, complex DAGs)
-- **Implementation roadmap**: How to actually build this with standard tools
-
-This document fills the gap between Google's abstract "model user journeys" advice and the practical "here's the Datadog query" implementation.
+What this README does is tie those ideas together into one simple pattern for flow SLIs you can alert on.
