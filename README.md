@@ -31,9 +31,9 @@ We work with time windows (for example, 1, 5, or 15 minutes). For each window $t
 - **Arrival** $A_i(t)$: number of requests entering step $i$ in window $t$.
 - **Transition ratio** $T_i(t)$: fraction of requests that move from step $i$ to step $i+1$:
   $$T_i(t) = \frac{A_{i+1}(t)}{A_i(t)}.$$
-- **Terminal Success**: last step with a clear success condition (for example final HTTP 2xx).
-- **Conversion** $C(t)$: fraction of requests that started in step 1 and ended in Success:
-  $$C(t) = \frac{A_\text{success}(t)}{A_1(t)} = \prod_{i=1}^L T_i(t).$$
+- **Terminal Success**: last step with a clear success condition (for example final HTTP 2xx). We denote it as step $L+1$.
+- **Conversion** $C(t)$: fraction of requests that started in step 1 and ended in Success (step $L+1$):
+  $$C(t) = \frac{A_{L+1}(t)}{A_1(t)} = \prod_{i=1}^L T_i(t).$$
 
 Notes:
 - We count **requests**, not unique users; retries are part of the signal.
@@ -48,10 +48,15 @@ Example flow:
 > Step 1 → Step 2 → Step 3 → Step 4 → Success
 
 For a window $t$:
-- $A_i(t)$: arrivals into step $i$, for $i ∈ \{1,2,3,4\}$.
-- $A_\text{success}(t)$: requests that finish the flow successfully at the last step.
+- $A_i(t)$: arrivals into step $i$, for $i ∈ \{1,2,3,4,5\}$, where step 5 is the terminal success step.
 - $T_i(t) = A_{i+1}(t)/A_i(t)$ for $i ∈ \{1,2,3,4\}$.
-- End-to-end conversion: $C(t) = T_1(t)·T_2(t)·T_3(t)·T_4(t)$.
+- End-to-end conversion:
+  $$
+  C(t)
+  = \frac{A_5(t)}{A_1(t)}
+  = \frac{A_5(t)}{A_4(t)} \cdot \frac{A_4(t)}{A_3(t)} \cdot \frac{A_3(t)}{A_2(t)} \cdot \frac{A_2(t)}{A_1(t)}
+  = T_4(t)·T_3(t)·T_2(t)·T_1(t).
+  $$
 
 Interpretation:
 - Any drop in any $T_i(t)$ shows up as a drop in $C(t)$.
@@ -94,7 +99,7 @@ Below is what each plot is meant to show.
 ### 1. Arrivals per step – normal
 
 ![Arrivals per step – normal](images/plot1.png)
-- View of $A_1, A_2, A_3, A_4, A_\text{success}$ for the normal case.
+- View of $A_1, A_2, A_3, A_4, A_5$ for the normal case.
 
 ### 2. Arrivals per step – bad $T_2$
 

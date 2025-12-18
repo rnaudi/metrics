@@ -25,7 +25,7 @@ C2 = T1 * T2_drop * T3 * T4
 
 os.makedirs("images", exist_ok=True)
 
-labels = ["Step 1", "Step 2", "Step 3", "Step 4", "Success"]
+labels = ["Step 1", "Step 2", "Step 3", "Step 4", "Step 5"]
 normal = [A1, A2, A3, A4, A5]
 drop = [A1, A2_drop, A3_drop, A4_drop, A5_drop]
 
@@ -33,7 +33,7 @@ drop = [A1, A2_drop, A3_drop, A4_drop, A5_drop]
 plt.figure(figsize=(7, 4))
 plt.bar(labels, normal, color="#1f77b4")  # blue
 plt.title("Arrivals per Step: Normal flow")
-plt.ylabel("Users")
+plt.ylabel("Requests")
 plt.tight_layout()
 plt.savefig("images/plot1.png")
 plt.close()
@@ -42,7 +42,7 @@ plt.close()
 plt.figure(figsize=(7, 4))
 plt.bar(labels, drop, color="#7f7f7f")  # gray
 plt.title("Arrivals per Step: T2 drop flow")
-plt.ylabel("Users")
+plt.ylabel("Requests")
 plt.tight_layout()
 plt.savefig("images/plot2.png")
 plt.close()
@@ -100,7 +100,7 @@ for idx, _ in enumerate(windows, start=1):
 		# Before experiment: T2 also healthy 0.9-1.0
 		t2 = random.uniform(0.95, 1.0)
 	else:
-		# After experiment: T2 slightly degraded, between 0.7 and 1.0
+		# After experiment: T2 degraded, between 0.2 and 0.5
 		t2 = random.uniform(0.2, 0.5)
 
 	C_series.append(t1 * t2 * t3 * t4)
