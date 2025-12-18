@@ -67,102 +67,6 @@ This does **not** mean funnels are bad. They answer different questions:
 
 In practice, you can run both side by side: use this flow model for real-time reliability signals and error budget policies, and use funnels for deeper product and segment analysis.
 
-## Existing approaches and alternatives
-
-### Conceptual foundation
-
-**Google SRE journey-based SLIs**: Google's [SRE Workbook](https://sre.google/workbook/implementing-slos/#modeling-user-journeys) describes modeling user journeys for SLOs, but provides limited implementation details. This document operationalizes that concept with:
-- Explicit mathematical formulas ($C(t) = \prod T_i(t)$)
-- Statistical Process Control adaptation for time-windowed metrics
-- Practical guidance on when the approach works and when it doesn't
-
-**Statistical Process Control (SPC)**: Control charts for quality monitoring come from manufacturing (Six Sigma, Shewhart charts). We adapt these techniques to:
-- Time-windowed request flows (not continuous manufacturing processes)
-- Proportions bounded in [0,1] (not unbounded measurements)
-- Systems with variable traffic volume
-
-### Comparison with existing tools
-
-#### Real User Monitoring (RUM) / Funnels
-**Tools**: Grafana Faro, Datadog RUM, Google Analytics, Amplitude, Mixpanel
-
-- **How they work**: Track individual user sessions with client-side instrumentation. Build funnels by querying event streams per user.
-- **Strengths**: Rich path analysis, segmentation, "what happened to user X?"
-- **Weaknesses**: Expensive at scale (per-user events), requires user identity, hard to use directly in SLOs.
-- **When to use**: Product analytics, A/B testing with deep segmentation.
-- **This model**: Cheaper (aggregate counters), no user tracking needed, designed for operational SLOs.
-
-#### Synthetic Monitoring
-**Tools**: Datadog Synthetics, Pingdom, Checkly
-
-- **How they work**: Bots run scripted user journeys; alert if they fail.
-- **Strengths**: Proactive (catches issues before users), consistent baseline.
-- **Weaknesses**: Fake traffic (not real users), limited coverage, can't detect load-dependent issues.
-- **When to use**: Smoke tests, monitoring from multiple regions, testing third-party dependencies.
-- **This model**: Monitors real user traffic flows, catches load-dependent issues.
-
-#### APM / Distributed Tracing
-**Tools**: Datadog APM, Honeycomb, Lightstep, Jaeger
-
-- **How they work**: Trace individual requests across services; reconstruct full journey per request.
-- **Strengths**: Deep per-request visibility, great for debugging specific failures.
-- **Weaknesses**: Expensive (high cardinality), requires sampling at scale, complex queries for aggregate patterns.
-- **When to use**: Incident investigation ("why did this specific request fail?").
-- **This model**: Aggregate metrics are cheaper, designed for SLOs and alerting.
-
-#### High-cardinality observability
-**Tools**: Honeycomb, Lightstep, Elastic Observability
-
-- **How they work**: Store high-cardinality events; slice by arbitrary dimensions.
-- **Strengths**: Extreme flexibility ("show me all requests where..." queries).
-- **Weaknesses**: Cost scales with cardinality and query complexity; need to know what to ask.
-- **When to use**: Exploratory analysis, ad-hoc investigation of unknown unknowns.
-- **This model**: Fixed, low-cardinality metrics ($\approx$10-20 flow values); cheaper, but pre-defined queries only.
-
-### Closest existing implementation
-
-**Google's internal SRE tools**: Google uses exactly this approach internally (flow-based SLIs with SPC), but their tools are proprietary and not documented. This document is effectively the public manual for DIY implementation.
-
-**Circonus** (commercial SaaS): Has histogram-based anomaly detection and composite metrics. Similar statistical approach, but focused on single-metric analysis, not multi-step flows.
-
-### Are we reinventing the wheel?
-
-**No—this is productionizing an under-documented concept.**
-
-What already exists:
-- **Concept**: Google's SRE Workbook describes journey-based SLIs (high level)
-- **Infrastructure**: OpenTelemetry, Prometheus, Datadog, service meshes that provide the metrics...
-- **Math**: SPC control charts are standard in manufacturing
-
-What's new here:
-- **Explicit formulas**: $C(t) = \prod T_i(t)$ as an SLO
-- **SPC adaptation**: Control charts for time-windowed, bounded proportions
-- **Practical guidance**: When it works (high volume, sequential flows) vs when it doesn't (low volume, complex DAGs)
-- **Implementation roadmap**: How to actually build this with standard tools
-
-This document fills the gap between Google's abstract "model user journeys" advice and the practical "here's the Datadog query" implementation.
-
-### Cost and cardinality
-
-This model reuses metrics you already have, but you may need a small extra tag
-to identify flows (for example: `flow=login-web` vs `flow=login-device`).
-That tag increases metric cardinality, which can affect cost and query
-performance in any metrics backend (Datadog, Prometheus, cloud-native systems).
-
-This is not unique to this model: funnels and event-based analytics also need
-identifiers for flows, steps, and segments. The practical tradeoff is usually:
-
-- **Metric-based model**: add a small number of stable flow tags to existing
-  counters. Cheaper when you already export infra metrics and want to reuse
-  them for SLOs, alerts, and dashboards.
-- **Funnels / events**: send richer, per-user event streams with many
-  properties. More flexible for analysis, typically higher volume and cost.
-
-In practice you can keep cost under control by:
-
-- Limiting flow-related tags to the minimum needed for operational decisions
-  (for example: flow name, region).
-- Avoiding per-user or per-session tags in the metrics backend.
 
 ## Metric definition
 
@@ -782,10 +686,103 @@ Adding flow tags increases metric cardinality. Here's a concrete example:
 - Custom metric pricing: ~\$0.05 per timeseries per month.
 - Total: $200 \times 0.05 = \$10/month$.
 
-**Cost estimate (Prometheus self-hosted)**:
-- Memory: ~2KB per timeseries → $200 \times 2KB = 400KB$ (negligible).
-- Storage: depends on retention and cardinality; typically < \$1/month for 200 timeseries.
-
 **Key insight**: A small, controlled tag like `flow` with 10-20 distinct values
 is much cheaper than per-user or per-session tags. The cardinality impact is
 manageable and predictable.
+
+## Existing approaches and alternatives
+
+### Conceptual foundation
+
+**Google SRE journey-based SLIs**: Google's [SRE Workbook](https://sre.google/workbook/implementing-slos/#modeling-user-journeys) describes modeling user journeys for SLOs, but provides limited implementation details. This document operationalizes that concept with:
+- Explicit mathematical formulas 
+- Statistical Process Control adaptation for time-windowed metrics
+- Practical guidance on when the approach works and when it doesn't
+
+**Statistical Process Control (SPC)**: Control charts for quality monitoring come from manufacturing. We adapt these techniques to:
+- Time-windowed request flows 
+- Proportions bounded in [0,1] 
+- Systems with variable traffic volume
+
+### Comparison with existing tools
+
+#### Real User Monitoring (RUM) / Funnels
+**Tools**: Grafana Faro, Datadog RUM, Google Analytics, Amplitude, Mixpanel
+
+- **How they work**: Track individual user sessions with client-side instrumentation. Build funnels by querying event streams per user.
+- **Strengths**: Rich path analysis, segmentation, "what happened to user X?"
+- **Weaknesses**: Expensive at scale (per-user events), requires user identity, hard to use directly in SLOs.
+- **When to use**: Product analytics, A/B testing with deep segmentation.
+- **This model**: Cheaper (aggregate counters), no user tracking needed, designed for operational SLOs.
+
+#### Synthetic Monitoring
+**Tools**: Datadog Synthetics, Pingdom, Checkly
+
+- **How they work**: Bots run scripted user journeys; alert if they fail.
+- **Strengths**: Proactive (catches issues before users), consistent baseline.
+- **Weaknesses**: Fake traffic (not real users), limited coverage, can't detect load-dependent issues.
+- **When to use**: Smoke tests, monitoring from multiple regions, testing third-party dependencies.
+- **This model**: Monitors real user traffic flows, catches load-dependent issues.
+
+#### APM / Distributed Tracing
+**Tools**: Datadog APM, Honeycomb, Lightstep, Jaeger
+
+- **How they work**: Trace individual requests across services; reconstruct full journey per request.
+- **Strengths**: Deep per-request visibility, great for debugging specific failures.
+- **Weaknesses**: Expensive (high cardinality), requires sampling at scale, complex queries for aggregate patterns.
+- **When to use**: Incident investigation ("why did this specific request fail?").
+- **This model**: Aggregate metrics are cheaper, designed for SLOs and alerting.
+
+#### High-cardinality observability
+**Tools**: Honeycomb, Lightstep, Elastic Observability
+
+- **How they work**: Store high-cardinality events; slice by arbitrary dimensions.
+- **Strengths**: Extreme flexibility ("show me all requests where..." queries).
+- **Weaknesses**: Cost scales with cardinality and query complexity; need to know what to ask.
+- **When to use**: Exploratory analysis, ad-hoc investigation of unknown unknowns.
+- **This model**: Fixed, low-cardinality metrics ($\approx$10-20 flow values); cheaper, but pre-defined queries only.
+
+### Closest existing implementation
+
+**Google's internal SRE tools**: Google uses exactly this approach internally (flow-based SLIs with SPC), but their tools are proprietary and not documented. This document is effectively the public manual for DIY implementation.
+
+**Circonus** (commercial SaaS): Has histogram-based anomaly detection and composite metrics. Similar statistical approach, but focused on single-metric analysis, not multi-step flows.
+
+### Are we reinventing the wheel?
+
+**No—this is productionizing an under-documented concept.**
+
+What already exists:
+- **Concept**: Google's SRE Workbook describes journey-based SLIs (high level)
+- **Infrastructure**: OpenTelemetry, Prometheus, Datadog, service meshes that provide the metrics...
+- **Math**: SPC control charts are standard in manufacturing
+
+What's new here:
+- **Explicit formulas**: $C(t) = \prod T_i(t)$ as an SLO
+- **SPC adaptation**: Control charts for time-windowed, bounded proportions
+- **Practical guidance**: When it works (high volume, sequential flows) vs when it doesn't (low volume, complex DAGs)
+- **Implementation roadmap**: How to actually build this with standard tools
+
+This document fills the gap between Google's abstract "model user journeys" advice and the practical "here's the Datadog query" implementation.
+
+### Cost and cardinality
+
+This model reuses metrics you already have, but you may need a small extra tag
+to identify flows (for example: `flow=login-web` vs `flow=login-device`).
+That tag increases metric cardinality, which can affect cost and query
+performance in any metrics backend (Datadog, Prometheus, cloud-native systems).
+
+This is not unique to this model: funnels and event-based analytics also need
+identifiers for flows, steps, and segments. The practical tradeoff is usually:
+
+- **Metric-based model**: add a small number of stable flow tags to existing
+  counters. Cheaper when you already export infra metrics and want to reuse
+  them for SLOs, alerts, and dashboards.
+- **Funnels / events**: send richer, per-user event streams with many
+  properties. More flexible for analysis, typically higher volume and cost.
+
+In practice you can keep cost under control by:
+
+- Limiting flow-related tags to the minimum needed for operational decisions
+  (for example: flow name, region).
+- Avoiding per-user or per-session tags in the metrics backend.
