@@ -146,6 +146,74 @@ if len(stable_C) >= 2:
 	plt.savefig("images/plot7.png")
 	plt.close()
 
+
+def simulate_windowed_T(num_users_per_minute: int, num_minutes: int, p_success: float = 0.9, mean_delay: float = 1.0):
+	"""Simulate a single transition (Step 1 -> Step 2) in 1-minute windows.
+
+	Each minute we get `num_users_per_minute` new users entering step 1.
+	Each user has probability `p_success` of eventually reaching step 2, with
+	a random delay drawn from an exponential distribution with mean `mean_delay`.
+
+	We then count step-1 and step-2 arrivals per minute and return the measured
+	T1(t) = A2(t)/A1(t) time series.
+	"""
+	step1_times = []
+	step2_times = []
+
+	for minute in range(num_minutes):
+		for _ in range(num_users_per_minute):
+			# User enters step 1 at some point within this minute
+			t1 = minute + random.random()
+			step1_times.append(t1)
+			if random.random() < p_success:
+				# Exponential delay before reaching step 2
+				delay = random.expovariate(1.0 / mean_delay)
+				t2 = t1 + delay
+				step2_times.append(t2)
+
+	A1 = [0] * num_minutes
+	A2 = [0] * num_minutes
+
+	for t in step1_times:
+		m = int(t)
+		if 0 <= m < num_minutes:
+			A1[m] += 1
+
+	for t in step2_times:
+		m = int(t)
+		if 0 <= m < num_minutes:
+			A2[m] += 1
+
+	T_series = []
+	for m in range(num_minutes):
+		if A1[m] > 0:
+			T_series.append(A2[m] / A1[m])
+		else:
+			T_series.append(float("nan"))
+
+	return T_series
+
+
+# 8) Time-window noise vs funnels (jitter analogy)
+minutes = 60
+low_volume_T = simulate_windowed_T(num_users_per_minute=2, num_minutes=minutes, p_success=T2, mean_delay=1.0)
+mid_volume_T = simulate_windowed_T(num_users_per_minute=200, num_minutes=minutes, p_success=T2, mean_delay=1.0)
+high_volume_T = simulate_windowed_T(num_users_per_minute=2000, num_minutes=minutes, p_success=T2, mean_delay=1.0)
+
+plt.figure(figsize=(8, 4))
+plt.plot(range(1, minutes + 1), low_volume_T, marker="o", linestyle="-", color="#1f77b4", alpha=0.7, label="2 users/min")
+plt.plot(range(1, minutes + 1), mid_volume_T, marker="o", linestyle="-", color="#7f7f7f", alpha=0.8, label="200 users/min")
+plt.plot(range(1, minutes + 1), high_volume_T, marker="o", linestyle="-", color="#2ca02c", alpha=0.9, label="2000 users/min")
+plt.hlines(T2, 1, minutes, colors="black", linestyles="dotted", label="True step-1→2 probability")
+plt.title("Measured T1(t) in 1-minute windows (timing jitter)")
+plt.xlabel("Minute window")
+plt.ylabel("T1(t) = A2(t)/A1(t)")
+plt.ylim(0, 1.1)
+plt.legend()
+plt.tight_layout()
+plt.savefig("images/plot8.png")
+plt.close()
+
 # Print math for clarity (optional, not in plot)
 print(f"Normal: C = {T1} * {T2} * {T3} * {T4} = {C1:.2f}")
 print(f"Drop:   C = {T1} * {T2_drop} * {T3} * {T4} = {C2:.2f}")
