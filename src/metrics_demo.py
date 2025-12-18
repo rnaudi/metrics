@@ -214,6 +214,22 @@ plt.tight_layout()
 plt.savefig("images/plot8.png")
 plt.close()
 
+# 9) Effect of adding more steps (constant per-step success)
+max_steps = 20
+per_step_success = 0.9
+steps = list(range(1, max_steps + 1))
+conversions = [per_step_success ** n for n in steps]
+
+plt.figure(figsize=(8, 4))
+plt.plot(steps, conversions, color="#1f77b4")
+plt.title("End-to-end conversion vs number of steps (T = 0.9)")
+plt.xlabel("Number of steps in the flow")
+plt.ylabel("Overall conversion C = 0.9^n")
+plt.ylim(0, 1.05)
+plt.tight_layout()
+plt.savefig("images/plot9.png")
+plt.close()
+
 # Print math for clarity (optional, not in plot)
 print(f"Normal: C = {T1} * {T2} * {T3} * {T4} = {C1:.2f}")
 print(f"Drop:   C = {T1} * {T2_drop} * {T3} * {T4} = {C2:.2f}")

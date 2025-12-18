@@ -327,3 +327,21 @@ Under a stable system, almost all points should stay between UCL and LCL.
 When the flow changes (for example, a bad T2 experiment), $C(t)$ will sit
 outside this band for a while, which is a strong signal that something
 structural has changed.
+
+### 8. Effect of adding more steps
+
+![End-to-end conversion vs number of steps](images/plot9.png)
+
+What it shows:
+- A simple flow where every step has the same success ratio $T = 0.9$.
+- We compute the overall conversion $C(n) = 0.9^n$ for flows with 1, 2, 3, …, 20 steps.
+
+Interpretation:
+- With 1 step, $C(1) = 0.9$ (90%).
+- With 4 steps, $C(4) = 0.9^4 \approx 0.66$ (only ~66% of users make it through).
+- As you keep adding steps, $C(n)$ keeps shrinking, even though each individual step
+  looks “good” at 90%.
+
+This is why it is important to keep flows as short as possible and to measure the
+end-to-end $C(t)$, not just per-step success. Long, multi-step flows silently eat
+conversion, and the product $C(t) = T_1(t) \cdot T_2(t) \cdots T_L(t)$ makes that visible.
