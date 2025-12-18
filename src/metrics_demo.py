@@ -194,7 +194,7 @@ def simulate_windowed_T(num_users_per_minute: int, num_minutes: int, p_success: 
 	return T_series
 
 
-# 8) Time-window noise vs funnels (jitter analogy)
+# 8) Time-window noise vs funnels
 minutes = 60
 low_volume_T = simulate_windowed_T(num_users_per_minute=2, num_minutes=minutes, p_success=T2, mean_delay=1.0)
 mid_volume_T = simulate_windowed_T(num_users_per_minute=200, num_minutes=minutes, p_success=T2, mean_delay=1.0)
@@ -205,7 +205,7 @@ plt.plot(range(1, minutes + 1), low_volume_T, marker="o", linestyle="-", color="
 plt.plot(range(1, minutes + 1), mid_volume_T, marker="o", linestyle="-", color="#7f7f7f", alpha=0.8, label="200 users/min")
 plt.plot(range(1, minutes + 1), high_volume_T, marker="o", linestyle="-", color="#2ca02c", alpha=0.9, label="2000 users/min")
 plt.hlines(T2, 1, minutes, colors="black", linestyles="dotted", label="True step-1→2 probability")
-plt.title("Measured T1(t) in 1-minute windows (timing jitter)")
+plt.title("Measured T1(t) in 1-minute windows (timing noise)")
 plt.xlabel("Minute window")
 plt.ylabel("T1(t) = A2(t)/A1(t)")
 plt.ylim(0, 1.1)

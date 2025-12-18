@@ -80,7 +80,7 @@ The math is based on ratios ($T_i$, $C$), not on absolute counts.
 - Under a stable system you can put upper/lower bands around $C(t)$ and detect when
   behavior breaks away from the usual range.
 
-### Time windows, funnels, and jitter
+### Time windows, funnels, and noise
 
 Funnels follow individual users across time, so each user is counted once in each step,
 no matter how long they take between steps.
@@ -91,15 +91,37 @@ and step 2, they appear in $A_1(t)$ in one window and in $A_2(t')$ in the next w
 In that case, the per-window ratio $T_1(t) = A_2(t)/A_1(t)$ is a **noisy estimate** of
 the true step-1→2 success probability.
 
-This is similar in spirit to [exponential backoff with jitter](https://aws.amazon.com/blogs/architecture/exponential-backoff-and-jitter/):
-randomness in timing spreads events across buckets. At low volume and with very small
-windows, this jitter makes $T_i(t)$ and $C(t)$ look noisy, even when the underlying
-system is perfectly stable.
+This is similar in spirit to [exponential backoff and jitter](https://aws.amazon.com/blogs/architecture/exponential-backoff-and-jitter/):
+random timing spreads calls across time instead of creating big spikes. At low volume
+and with very small windows, this timing noise makes $T_i(t)$ and $C(t)$ look noisy,
+even when the underlying system is perfectly stable.
 
 As volume grows (or you use slightly larger windows), the law of large numbers wins:
 flows eventually move into the next step, and the window-level ratios settle around
 their true values. The SPC-style view of $C(t)$ and the control limits help you focus
-on structural changes instead of this natural timing jitter.
+on structural changes instead of this natural timing noise.
+
+
+#### Time-window noise vs funnels
+
+![T1 in 1-minute windows: low vs high volume](images/plot8.png)
+
+What it shows:
+- A 2-step flow (Step 1 → Step 2) where each user has a fixed true success probability.
+- We measure $T_1(t) = A_2(t)/A_1(t)$ in 1-minute windows for three cases:
+  2 users/min, 200 users/min, and 2000 users/min.
+
+Interpretation:
+- At 2 users/min, per-window $T_1(t)$ jumps around a lot because users cross
+  window boundaries; arrivals into step 2 are spread over time.
+- At 200 users/min, the same randomness is already much smoother.
+- At 2000 users/min, the measured $T_1(t)$ hugs the true underlying probability.
+
+This is the practical difference between funnels (tracking each user) and this
+flow-based model (tracking windows). Timing noise matters a lot at low volume
+and tiny windows, but becomes mostly harmless once you have enough users or slightly
+larger windows. The SPC $C(t)$ view lets you ignore this noise and focus on
+
 
 ### SPC and control limits
 
@@ -282,24 +304,3 @@ Under a stable system, almost all points should stay between UCL and LCL.
 When the flow changes (for example, a bad T2 experiment), $C(t)$ will sit
 outside this band for a while, which is a strong signal that something
 structural has changed.
-
-### 8. Time-window noise vs funnels (jitter analogy)
-
-![T1 in 1-minute windows: low vs high volume](images/plot8.png)
-
-What it shows:
-- A 2-step flow (Step 1 → Step 2) where each user has a fixed true success probability.
-- We measure $T_1(t) = A_2(t)/A_1(t)$ in 1-minute windows for three cases:
-  2 users/min, 200 users/min, and 2000 users/min.
-
-Interpretation:
-- At 2 users/min, per-window $T_1(t)$ jumps around a lot because users cross
-  window boundaries; arrivals into step 2 are jittered over time.
-- At 200 users/min, the same randomness is already much smoother.
-- At 2000 users/min, the measured $T_1(t)$ hugs the true underlying probability.
-
-This is the practical difference between funnels (tracking each user) and this
-flow-based model (tracking windows). Timing jitter matters a lot at low volume
-and tiny windows, but becomes mostly noise once you have enough users or slightly
-larger windows. The SPC $C(t)$ view lets you ignore this jitter and focus on
-real, structural changes in the flow.
