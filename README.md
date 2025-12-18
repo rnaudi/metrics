@@ -4,27 +4,6 @@ Model multi-step user journeys (login, signup, checkout, etc.) using simple requ
 
 ---
 
-## Getting started
-
-Requires [uv](https://docs.astral.sh/uv/):
-
-```sh
-uv --version
-```
-
-Activate the virtual environment:
-
-```sh
-source ./.venv/bin/activate
-```
-
-Generate the example plots used in this README:
-
-```sh
-python ./src/metrics_demo.py
-```
-
----
 
 ## Core idea
 
@@ -262,3 +241,23 @@ $A_i(t)$, $T_i(t)$, and $C(t)$.
 - Metrics backends like Prometheus, Datadog, and OpenTelemetry
 
 What this README does is tie those ideas together into one simple pattern for flow SLIs you can alert on.
+
+## Refresh visualizations
+
+Requires [uv](https://docs.astral.sh/uv/):
+
+```sh
+uv --version
+```
+
+Activate the virtual environment:
+
+```sh
+source ./.venv/bin/activate
+```
+
+Generate the example plots used in this README:
+
+```sh
+python ./src/metrics_demo.py
+```
