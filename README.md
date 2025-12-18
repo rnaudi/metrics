@@ -67,6 +67,81 @@ This does **not** mean funnels are bad. They answer different questions:
 
 In practice, you can run both side by side: use this flow model for real-time reliability signals and error budget policies, and use funnels for deeper product and segment analysis.
 
+## Existing approaches and alternatives
+
+### Conceptual foundation
+
+**Google SRE journey-based SLIs**: Google's [SRE Workbook](https://sre.google/workbook/implementing-slos/#modeling-user-journeys) describes modeling user journeys for SLOs, but provides limited implementation details. This document operationalizes that concept with:
+- Explicit mathematical formulas ($C(t) = \prod T_i(t)$)
+- Statistical Process Control adaptation for time-windowed metrics
+- Practical guidance on when the approach works and when it doesn't
+
+**Statistical Process Control (SPC)**: Control charts for quality monitoring come from manufacturing (Six Sigma, Shewhart charts). We adapt these techniques to:
+- Time-windowed request flows (not continuous manufacturing processes)
+- Proportions bounded in [0,1] (not unbounded measurements)
+- Systems with variable traffic volume
+
+### Comparison with existing tools
+
+#### Real User Monitoring (RUM) / Funnels
+**Tools**: Grafana Faro, Datadog RUM, Google Analytics, Amplitude, Mixpanel
+
+- **How they work**: Track individual user sessions with client-side instrumentation. Build funnels by querying event streams per user.
+- **Strengths**: Rich path analysis, segmentation, "what happened to user X?"
+- **Weaknesses**: Expensive at scale (per-user events), requires user identity, hard to use directly in SLOs.
+- **When to use**: Product analytics, A/B testing with deep segmentation.
+- **This model**: Cheaper (aggregate counters), no user tracking needed, designed for operational SLOs.
+
+#### Synthetic Monitoring
+**Tools**: Datadog Synthetics, Pingdom, Checkly
+
+- **How they work**: Bots run scripted user journeys; alert if they fail.
+- **Strengths**: Proactive (catches issues before users), consistent baseline.
+- **Weaknesses**: Fake traffic (not real users), limited coverage, can't detect load-dependent issues.
+- **When to use**: Smoke tests, monitoring from multiple regions, testing third-party dependencies.
+- **This model**: Monitors real user traffic flows, catches load-dependent issues.
+
+#### APM / Distributed Tracing
+**Tools**: Datadog APM, Honeycomb, Lightstep, Jaeger
+
+- **How they work**: Trace individual requests across services; reconstruct full journey per request.
+- **Strengths**: Deep per-request visibility, great for debugging specific failures.
+- **Weaknesses**: Expensive (high cardinality), requires sampling at scale, complex queries for aggregate patterns.
+- **When to use**: Incident investigation ("why did this specific request fail?").
+- **This model**: Aggregate metrics are cheaper, designed for SLOs and alerting.
+
+#### High-cardinality observability
+**Tools**: Honeycomb, Lightstep, Elastic Observability
+
+- **How they work**: Store high-cardinality events; slice by arbitrary dimensions.
+- **Strengths**: Extreme flexibility ("show me all requests where..." queries).
+- **Weaknesses**: Cost scales with cardinality and query complexity; need to know what to ask.
+- **When to use**: Exploratory analysis, ad-hoc investigation of unknown unknowns.
+- **This model**: Fixed, low-cardinality metrics ($\approx$10-20 flow values); cheaper, but pre-defined queries only.
+
+### Closest existing implementation
+
+**Google's internal SRE tools**: Google uses exactly this approach internally (flow-based SLIs with SPC), but their tools are proprietary and not documented. This document is effectively the public manual for DIY implementation.
+
+**Circonus** (commercial SaaS): Has histogram-based anomaly detection and composite metrics. Similar statistical approach, but focused on single-metric analysis, not multi-step flows.
+
+### Are we reinventing the wheel?
+
+**No—this is productionizing an under-documented concept.**
+
+What already exists:
+- **Concept**: Google's SRE Workbook describes journey-based SLIs (high level)
+- **Infrastructure**: OpenTelemetry, Prometheus, Datadog, service meshes that provide the metrics...
+- **Math**: SPC control charts are standard in manufacturing
+
+What's new here:
+- **Explicit formulas**: $C(t) = \prod T_i(t)$ as an SLO
+- **SPC adaptation**: Control charts for time-windowed, bounded proportions
+- **Practical guidance**: When it works (high volume, sequential flows) vs when it doesn't (low volume, complex DAGs)
+- **Implementation roadmap**: How to actually build this with standard tools
+
+This document fills the gap between Google's abstract "model user journeys" advice and the practical "here's the Datadog query" implementation.
+
 ### Cost and cardinality
 
 This model reuses metrics you already have, but you may need a small extra tag
@@ -94,15 +169,17 @@ In practice you can keep cost under control by:
 Very small glossary:
 
 - **Step** ($i$): a state in the journey (for example: "login web site", "login from a device", "one time token page", "user-password validation").
-- **Transition** ($T_i$): fraction of users that move from step $i$ to step $i+1$.
-- **Arrival** ($A_i$): number of users that enter a step in a given time window.
+- **Transition** ($T_i$): fraction of requests that move from step $i$ to step $i+1$.
+- **Arrival** ($A_i$): number of requests (HTTP calls, API invocations) that enter a step in a given time window.
 - **Success transition** ($T_L$): fraction of arrivals at the last step that end in a terminal "Success" outcome (for example, HTTP 2xx on the final endpoint).
-- **Conversion** ($C$): fraction of users that started in step 1 and ended in Success.
+- **Conversion** ($C$): fraction of requests that started in step 1 and ended in Success.
+
+**Note**: We count requests/arrivals per time window, not unique users. A single user who retries will generate multiple arrivals. This is by design—retries and repeated attempts are part of the operational signal we want to track.
 
 ### Why this is "volume-agnostic"
 
 The definitions in this model are volume-agnostic: $T_i$ and $C$ are ratios, so
-they do not change just because you have 1k users or 1M users. The math is based
+they do not change just because you have 1k requests or 1M requests. The math is based
 on proportions ($T_i$, $C$), not on absolute counts.
 
 However, the signal-to-noise ratio depends on volume: with more traffic, the ratios
@@ -198,8 +275,8 @@ Let the auth flow be 4 numbered steps plus a terminal Success outcome:
 
 For a given time window $t$:
 
-- Arrival counts: $A_i(t)$ = number of users entering step $i$, $i \in \{1,2,3,4,5\}$.
-- Success arrivals: $A_5(t)$ = number of users who completed the flow with a terminal Success outcome at step 4 (for example, HTTP 2xx on the last endpoint).
+- Arrival counts: $A_i(t)$ = number of requests entering step $i$, $i \in \{1,2,3,4,5\}$.
+- Success arrivals: $A_5(t)$ = number of requests that completed the flow with a terminal Success outcome at step 4 (for example, HTTP 2xx on the last endpoint).
 - Transition ratios between steps: $T_i(t) = \dfrac{A_{i+1}(t)}{A_i(t)}$, $i \in \{1,2,3,4\}$.
   - For $i \in \{1,2,3\}$, $T_i(t)$ is a normal "continue to next step" ratio.
   - For $i = 4$, $T_4(t)$ is the terminal success ratio (Success at step 4).
@@ -275,7 +352,7 @@ conversion from $72.9\%$ to $16.2\%$ (about a 4.5x drop).
 
 What it shows:
 - Single flow with the normal parameters: $T_1 = T_2 = T_3 = 0.9$, $T_4 = 1.0$.
-- You see a smooth, expected decline in users across the steps.
+- You see a smooth, expected decline in request volume across the steps.
 
 You can use this to explain the baseline: "this is what healthy looks like".
 
@@ -301,7 +378,7 @@ Interpretation:
 - Up to step 2 the bars are identical: $T_1$ is the same in both scenarios.
 - From step 3 onward, the "Drop T2" bars are much smaller because $T_2$ fell
   from $0.9$ to $0.2$.
-- This makes it visually obvious *where* users are disappearing in the flow.
+- This makes it visually obvious *where* requests are dropping from the flow.
 
 ### 4. Transition ratios: normal vs T2 drop (grouped bars)
 
@@ -410,7 +487,7 @@ What it shows:
 
 Interpretation:
 - With 1 step, $C(1) = 0.9$ (90%).
-- With 4 steps, $C(4) = 0.9^4 \approx 0.66$ (only ~66% of users make it through).
+- With 4 steps, $C(4) = 0.9^4 \approx 0.66$ (only ~66% of requests make it through).
 - As you keep adding steps, $C(n)$ keeps shrinking, even though each individual step
   looks “good” at 90%.
 
@@ -451,12 +528,12 @@ abuse) show up as changes in the same $A_i(t)$, $T_i(t)$, and $C(t)$ signals.
 ### Appendix A: Statistical properties and volume dependence
 
 The **definitions** in this model are volume-agnostic: $T_i$ and $C$ are ratios, so
-they do not change just because you have 1k users or 1M users. In that sense, the math
+they do not change just because you have 1k requests or 1M requests. In that sense, the math
 is based on proportions ($T_i$, $C$), not on absolute counts.
 
 However, the **uncertainty** of those ratios *does* depend on volume:
 
-- With very small $A_1(t)$ (for example, a few users per window), $T_i(t)$ and $C(t)$
+- With very small $A_1(t)$ (for example, a few requests per window), $T_i(t)$ and $C(t)$
   have high binomial variance; individual windows can look noisy even in a stable system.
 - As volume grows, the law of large numbers makes the per-window ratios concentrate
   around their true values.
@@ -654,7 +731,7 @@ This metric-based approach works well for many flows, but has clear limitations.
    - **Alternative**: Break into shorter subflows (e.g., "auth" + "profile setup" + "activation") and monitor each separately.
 
 5. **Flows with significant sampling** (< 1% of traffic):
-   - Sampling increases variance; at 0.1% sampling with 10k users, you have only 10 sampled users.
+   - Sampling increases variance; at 0.1% sampling with 10k requests, you have only 10 sampled requests.
    - **Alternative**: Increase sampling rate for critical flows, or aggregate over longer windows.
 
 #### When this model works best
