@@ -1,6 +1,6 @@
-# metrics
+# **Journey Flow Metrics**
 
-Model multi-step user journeys (login, signup, checkout, etc.) using simple request counters and ratios. Watch end-to-end conversion with control charts.
+Model multi-step user journeys (login, signup, checkout, etc.) using simple request counters and ratios. Watch end-to-end conversion with control charts. We call this approach **Journey Flow Metrics**.
 
 ---
 
@@ -69,7 +69,7 @@ See [src/metrics_demo.py](src/metrics_demo.py) for code that generates the examp
 The examples above use a simple linear chain of steps (1 → 2 → 3 → 4 → Success).
 Real systems often have optional steps, retries, and branches (for example, different payment providers).
 
-This model still applies: you can define multiple flows or subflows, or group
+This **Journey Flow Metrics** model still applies: you can define multiple flows or subflows, or group
 several endpoints into a single logical step. As long as you can
 count arrivals $A_i(t)$ and transitions $T_i(t)$ for the paths you care about,
 you can build dashboards for arbitrary user journeys on top of the same
@@ -193,7 +193,7 @@ $A_i(t)$, $T_i(t)$, and $C(t)$.
 | Synthetic monitoring             | Bots run scripted journeys                                  | Smoke tests, external checks, third parties     | Fake traffic, limited scenarios, no load info |
 | APM / distributed tracing        | Per-request traces across services                          | Deep debugging of specific failures             | High cardinality, sampling, complex queries  |
 | High-cardinality observability   | Stores rich, high-cardinality events and fields            | Ad-hoc "show me all requests where…" queries   | Cost grows with cardinality and usage        |
-| This flow-metrics model          | Aggregate request counters per step and time window        | Cheap, simple flow SLIs and SLOs               | Less flexible for arbitrary ad-hoc questions |
+| This **Journey Flow Metrics** model  | Aggregate request counters per step and time window        | Cheap, simple flow SLIs and SLOs               | Less flexible for arbitrary ad-hoc questions |
 
 #### Real User Monitoring (RUM) / Funnels
 **Tools**: Grafana Faro, Datadog RUM, Google Analytics, Amplitude, Mixpanel
@@ -202,7 +202,7 @@ $A_i(t)$, $T_i(t)$, and $C(t)$.
 - **Strengths**: Rich path analysis, segmentation, "what happened to user X?"
 - **Weaknesses**: Expensive at scale (per-user events), requires user identity, hard to use directly in SLOs.
 - **When to use**: Product analytics, A/B testing with deep segmentation.
-- **This model**: Cheaper (aggregate counters), no user tracking needed, designed for operational SLOs.
+- **This Journey Flow Metrics model**: Cheaper (aggregate counters), no user tracking needed, designed for operational SLOs.
 
 #### Synthetic Monitoring
 **Tools**: Datadog Synthetics, Pingdom, Checkly
@@ -211,7 +211,7 @@ $A_i(t)$, $T_i(t)$, and $C(t)$.
 - **Strengths**: Proactive (catches issues before users), consistent baseline.
 - **Weaknesses**: Fake traffic (not real users), limited coverage, can't detect load-dependent issues.
 - **When to use**: Smoke tests, monitoring from multiple regions, testing third-party dependencies.
-- **This model**: Monitors real user traffic flows, catches load-dependent issues.
+- **This Journey Flow Metrics model**: Monitors real user traffic flows, catches load-dependent issues.
 
 #### APM / Distributed Tracing
 **Tools**: Datadog APM, Honeycomb, Lightstep, Jaeger
@@ -220,7 +220,7 @@ $A_i(t)$, $T_i(t)$, and $C(t)$.
 - **Strengths**: Deep per-request visibility, great for debugging specific failures.
 - **Weaknesses**: Expensive (high cardinality), requires sampling at scale, complex queries for aggregate patterns.
 - **When to use**: Incident investigation ("why did this specific request fail?").
-- **This model**: Aggregate metrics are cheaper, designed for SLOs and alerting.
+- **This Journey Flow Metrics model**: Aggregate metrics are cheaper, designed for SLOs and alerting.
 
 #### High-cardinality observability
 **Tools**: Honeycomb, Lightstep, Elastic Observability
@@ -229,7 +229,7 @@ $A_i(t)$, $T_i(t)$, and $C(t)$.
 - **Strengths**: Extreme flexibility ("show me all requests where..." queries).
 - **Weaknesses**: Cost scales with cardinality and query complexity; need to know what to ask.
 - **When to use**: Exploratory analysis, ad-hoc investigation of unknown unknowns.
-- **This model**: Fixed, low-cardinality metrics ($\approx$10-20 flow values); cheaper, but pre-defined queries only.
+- **This Journey Flow Metrics model**: Fixed, low-cardinality metrics ($\approx$10-20 flow values); cheaper, but pre-defined queries only.
 
 ### Closest existing implementation
 
