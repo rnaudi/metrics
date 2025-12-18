@@ -165,6 +165,7 @@ These notes help when you roll this out in production.
 **Time-window selection**
 - At low volume: prefer 5–15 minute windows and require multiple bad windows before paging.
 - If you know typical step latency, choose window size $W$ roughly $5–10×$ the p95 between steps.
+- That way most users finish a step within one window, so $A_i(t)$ and $A_{i+1}(t)$ stay aligned and timing noise is smaller.
 
 **Control charts**
 - Individuals chart: simple, works when volume per window is roughly stable.
@@ -173,16 +174,12 @@ These notes help when you roll this out in production.
 
 **Non-linear flows**
 - For branches (for example multiple payment methods), define separate subflows and optionally aggregate their conversions.
-- For loops/retries, count first attempts separately from retries so $T_i(t)$ reflects eventual success of unique attempts.
-
-**When not to use this model**
-- Very low volume, very long or heavily branched flows, unsegmented heavy abuse, or heavily sampled traffic.
-- In those cases, prefer event-based funnels, tracing, or dedicated security/abuse detection.
+- For loops and retries, you can usually treat retries as extra noise in $A_i(t)$ and $T_i(t)$; with enough traffic they average out. Only split out first attempts vs retries if you have a specific reason to do so.
 
 **SLIs, SLOs, and cost**
 - Typical stack: per-endpoint availability + latency **and** flow conversion $C(t)$.
-- Per-step SLOs locate the broken component; flow SLOs say whether the journey works.
-- A small, controlled `flow` tag (≈10–20 values) adds predictable metric cardinality and is usually cheap in managed backends.
+- Per-step SLOs locate the broken component; End to end conversion flow SLOs say whether the journey works.
+- A small, controlled `flow` tag adds predictable metric cardinality and is usually cheap in managed backends.
 
 
 **Traffic mix, bots, and abuse**
@@ -208,6 +205,14 @@ $A_i(t)$, $T_i(t)$, and $C(t)$.
 - Systems with variable traffic volume
 
 ### Comparison with existing tools
+
+| Approach                         | How it works                                                | What it is best at                              | Main tradeoffs                              |
+|----------------------------------|-------------------------------------------------------------|-------------------------------------------------|---------------------------------------------|
+| Real User Monitoring / Funnels   | Client events per user/session, queried as funnels         | Product analytics, paths, cohorts, UX questions | Needs identity, higher cost, awkward for SLOs |
+| Synthetic monitoring             | Bots run scripted journeys                                  | Smoke tests, external checks, third parties     | Fake traffic, limited scenarios, no load info |
+| APM / distributed tracing        | Per-request traces across services                          | Deep debugging of specific failures             | High cardinality, sampling, complex queries  |
+| High-cardinality observability   | Stores rich, high-cardinality events and fields            | Ad-hoc "show me all requests where…" queries   | Cost grows with cardinality and usage        |
+| This flow-metrics model          | Aggregate request counters per step and time window        | Cheap, simple flow SLIs and SLOs               | Less flexible for arbitrary ad-hoc questions |
 
 #### Real User Monitoring (RUM) / Funnels
 **Tools**: Grafana Faro, Datadog RUM, Google Analytics, Amplitude, Mixpanel
