@@ -62,12 +62,20 @@ def plot1_arrivals(flow_a: FlowScenario, flow_b: FlowScenario, filename: str = "
 	"""Plot arrivals per step for the first scenario (flow_a)."""
 	arrivals_a = flow_a.arrivals
 	labels = [f"Step {i + 1}" for i in range(len(arrivals_a))]
-	plt.figure(figsize=(7, 4))
-	plt.bar(labels, arrivals_a, color="#1f77b4")
-	plt.title(f"Arrivals per Step: {flow_a.name}")
-	plt.ylabel("Requests")
+	plt.figure(figsize=(8, 5))
+	bars = plt.bar(labels, arrivals_a, color="#2ca02c", alpha=0.8, edgecolor="black", linewidth=0.5)
+	# Add value labels on bars
+	for bar in bars:
+		height = bar.get_height()
+		plt.text(bar.get_x() + bar.get_width()/2., height,
+				f'{int(height)}',
+				ha='center', va='bottom', fontsize=9)
+	plt.title(f"Healthy Flow: Per-Step Request Arrivals", fontsize=12, fontweight="bold")
+	plt.ylabel("Number of requests", fontsize=11)
+	plt.xlabel("Flow step", fontsize=11)
+	plt.grid(axis="y", alpha=0.3)
 	plt.tight_layout()
-	plt.savefig(filename)
+	plt.savefig(filename, dpi=150)
 	plt.close()
 
 
@@ -75,12 +83,20 @@ def plot2_arrivals(flow_a: FlowScenario, flow_b: FlowScenario, filename: str = "
 	"""Plot arrivals per step for the second scenario (flow_b)."""
 	arrivals_b = flow_b.arrivals
 	labels = [f"Step {i + 1}" for i in range(len(arrivals_b))]
-	plt.figure(figsize=(7, 4))
-	plt.bar(labels, arrivals_b, color="#7f7f7f")
-	plt.title(f"Arrivals per Step: {flow_b.name}")
-	plt.ylabel("Requests")
+	plt.figure(figsize=(8, 5))
+	bars = plt.bar(labels, arrivals_b, color="#d62728", alpha=0.8, edgecolor="black", linewidth=0.5)
+	# Add value labels on bars
+	for bar in bars:
+		height = bar.get_height()
+		plt.text(bar.get_x() + bar.get_width()/2., height,
+				f'{int(height)}',
+				ha='center', va='bottom', fontsize=9)
+	plt.title(f"Broken Flow: Step 2 Failure (T2=0.2)", fontsize=12, fontweight="bold")
+	plt.ylabel("Number of requests", fontsize=11)
+	plt.xlabel("Flow step", fontsize=11)
+	plt.grid(axis="y", alpha=0.3)
 	plt.tight_layout()
-	plt.savefig(filename)
+	plt.savefig(filename, dpi=150)
 	plt.close()
 
 
@@ -91,14 +107,19 @@ def plot3_arrivals_comparison(flow_a: FlowScenario, flow_b: FlowScenario, filena
 	if len(arrivals_a) != len(arrivals_b):
 		raise ValueError("Flow scenarios must have the same number of steps")
 	labels = [f"Step {i + 1}" for i in range(len(arrivals_a))]
-	plt.figure(figsize=(7, 4))
-	plt.bar(labels, arrivals_a, alpha=0.7, label=flow_a.name, color="#1f77b4")
-	plt.bar(labels, arrivals_b, alpha=0.7, label=flow_b.name, color="#7f7f7f")
-	plt.title(f"Arrivals per Step: {flow_a.name} vs {flow_b.name}")
-	plt.ylabel("Requests")
-	plt.legend()
+	positions = range(len(labels))
+	width = 0.35
+	plt.figure(figsize=(10, 5))
+	plt.bar([p - width/2 for p in positions], arrivals_a, width=width, label="Healthy (T2=0.9)", color="#2ca02c", alpha=0.8, edgecolor="black", linewidth=0.5)
+	plt.bar([p + width/2 for p in positions], arrivals_b, width=width, label="Broken (T2=0.2)", color="#d62728", alpha=0.8, edgecolor="black", linewidth=0.5)
+	plt.xticks(list(positions), labels, fontsize=10)
+	plt.title("Side-by-Side: Healthy vs. Broken Flow", fontsize=12, fontweight="bold")
+	plt.ylabel("Number of requests", fontsize=11)
+	plt.xlabel("Flow step", fontsize=11)
+	plt.legend(fontsize=10)
+	plt.grid(axis="y", alpha=0.3)
 	plt.tight_layout()
-	plt.savefig(filename)
+	plt.savefig(filename, dpi=150)
 	plt.close()
 
 
@@ -109,15 +130,27 @@ def plot4_transition_ratios(flow_a: FlowScenario, flow_b: FlowScenario, filename
 	ratio_labels = [f"T{i + 1}" for i in range(len(flow_a.transitions))]
 	positions = list(range(len(ratio_labels)))
 	width = 0.35
-	plt.figure(figsize=(6, 4))
-	plt.bar([p - width / 2 for p in positions], flow_a.transitions, width=width, label=flow_a.name, color="#1f77b4")
-	plt.bar([p + width / 2 for p in positions], flow_b.transitions, width=width, label=flow_b.name, color="#7f7f7f")
-	plt.xticks(positions, ratio_labels)
-	plt.title(f"Transition Ratios: {flow_a.name} vs {flow_b.name}")
-	plt.ylim(0, 1)
-	plt.legend()
+	plt.figure(figsize=(8, 5))
+	bars1 = plt.bar([p - width / 2 for p in positions], flow_a.transitions, width=width, label="Healthy", color="#2ca02c", alpha=0.8, edgecolor="black", linewidth=0.5)
+	bars2 = plt.bar([p + width / 2 for p in positions], flow_b.transitions, width=width, label="Broken", color="#d62728", alpha=0.8, edgecolor="black", linewidth=0.5)
+	
+	# Add value labels
+	for bars in [bars1, bars2]:
+		for bar in bars:
+			height = bar.get_height()
+			plt.text(bar.get_x() + bar.get_width()/2., height + 0.02,
+					f'{height:.1f}',
+					ha='center', va='bottom', fontsize=8)
+	
+	plt.xticks(positions, ratio_labels, fontsize=10)
+	plt.title("Per-Step Transition Ratios: Where Did It Break?", fontsize=12, fontweight="bold")
+	plt.ylabel("Transition ratio (0-1)", fontsize=11)
+	plt.xlabel("Transition step", fontsize=11)
+	plt.ylim(0, 1.1)
+	plt.legend(fontsize=10)
+	plt.grid(axis="y", alpha=0.3)
 	plt.tight_layout()
-	plt.savefig(filename)
+	plt.savefig(filename, dpi=150)
 	plt.close()
 
 
@@ -125,13 +158,26 @@ def plot5_conversion(flow_a: FlowScenario, flow_b: FlowScenario, filename: str =
 	"""Plot end-to-end conversion C for both scenarios."""
 	C1 = flow_a.conversion
 	C2 = flow_b.conversion
-	plt.figure(figsize=(4, 4))
-	plt.bar([flow_a.name, flow_b.name], [C1, C2], color=["#1f77b4", "#7f7f7f"])
-	plt.title("End-to-End Conversion (C)")
-	plt.ylabel("Conversion Ratio")
+	plt.figure(figsize=(7, 5))
+	bars = plt.bar(["Healthy Flow", "Broken Flow"], [C1, C2], color=["#2ca02c", "#d62728"], alpha=0.8, edgecolor="black", linewidth=1)
+	
+	# Add value labels
+	for bar in bars:
+		height = bar.get_height()
+		plt.text(bar.get_x() + bar.get_width()/2., height + 0.02,
+				f'{height:.1%}',
+				ha='center', va='bottom', fontsize=11, fontweight="bold")
+	
+	# Add reference line at 70% SLO
+	plt.axhline(y=0.70, color='black', linestyle='--', linewidth=1, alpha=0.5, label="Example SLO (70%)")
+	
+	plt.title("End-to-End Conversion: Your Flow SLI", fontsize=12, fontweight="bold")
+	plt.ylabel("Conversion ratio C(t)", fontsize=11)
 	plt.ylim(0, 1)
+	plt.legend(fontsize=9)
+	plt.grid(axis="y", alpha=0.3)
 	plt.tight_layout()
-	plt.savefig(filename)
+	plt.savefig(filename, dpi=150)
 	plt.close()
 
 @dataclass
@@ -227,21 +273,28 @@ def plot_C_with_limits(
 	if limits is None:
 		return
 	mean_C, ucl, lcl = limits
-	plt.figure(figsize=(8, 4))
-	plt.plot(windows, C_series, marker="o", color="#1f77b4", label="C(t)")
-	if highlight_test_phase:
-		for w in range(sim.base_length + 1, len(windows) + 1):
-			plt.axvspan(w - 0.5, w + 0.5, color="red", alpha=0.05)
-	plt.hlines(mean_C, 1, len(windows), colors="#1f77b4", linestyles="dashed", label="Average C (base phase)")
-	plt.hlines(ucl, 1, len(windows), colors="#7f7f7f", linestyles="dotted", label="Upper limit (base phase)")
-	plt.hlines(lcl, 1, len(windows), colors="#7f7f7f", linestyles="dotted", label="Lower limit (base phase)")
-	plt.title(title or "End-to-End Conversion C(t) with control limits")
-	plt.xlabel("Time window")
-	plt.ylabel("Conversion Ratio C(t)")
+	plt.figure(figsize=(10, 5))
+	
+	# Add shading for test phase first (so it's in background)
+	if highlight_test_phase and sim.test_length > 0:
+		plt.axvspan(sim.base_length + 0.5, len(windows) + 0.5, color="#ffcccc", alpha=0.3, label="Failure injected")
+	
+	# Plot control limits
+	plt.hlines(mean_C, 1, len(windows), colors="#1f77b4", linestyles="dashed", label=f"Mean C = {mean_C:.3f}", linewidth=2)
+	plt.hlines(ucl, 1, len(windows), colors="#666666", linestyles="dotted", label=f"Control limits", linewidth=1.5)
+	plt.hlines(lcl, 1, len(windows), colors="#666666", linestyles="dotted", linewidth=1.5)
+	
+	# Plot C(t) series
+	plt.plot(windows, C_series, marker="o", markersize=4, color="#1f77b4", label="C(t)", linewidth=1.5, alpha=0.8)
+	
+	plt.title(title or "End-to-End Conversion C(t) with Control Limits", fontsize=12, fontweight="bold")
+	plt.xlabel("Time window", fontsize=11)
+	plt.ylabel("Conversion Ratio C(t)", fontsize=11)
 	plt.ylim(0, 1)
-	plt.legend()
+	plt.grid(axis="y", alpha=0.3)
+	plt.legend(loc="best", fontsize=9)
 	plt.tight_layout()
-	plt.savefig(filename)
+	plt.savefig(filename, dpi=150)
 	plt.close()
 
 
@@ -297,18 +350,19 @@ def plot8_timing_noise(p_success: float, filename: str = "images/plot8.png") -> 
 	low_volume_T = simulate_windowed_T(num_users_per_minute=20, num_minutes=minutes, p_success=p_success, mean_delay=1.0)
 	mid_volume_T = simulate_windowed_T(num_users_per_minute=200, num_minutes=minutes, p_success=p_success, mean_delay=1.0)
 	high_volume_T = simulate_windowed_T(num_users_per_minute=2000, num_minutes=minutes, p_success=p_success, mean_delay=1.0)
-	plt.figure(figsize=(8, 4))
-	plt.plot(range(1, minutes + 1), low_volume_T, marker="o", linestyle="-", color="#1f77b4", alpha=0.7, label="2 users/min")
-	plt.plot(range(1, minutes + 1), mid_volume_T, marker="o", linestyle="-", color="#7f7f7f", alpha=0.8, label="200 users/min")
-	plt.plot(range(1, minutes + 1), high_volume_T, marker="o", linestyle="-", color="#2ca02c", alpha=0.9, label="2000 users/min")
-	plt.hlines(p_success, 1, minutes, colors="black", linestyles="dotted", label="True step-1->2 probability")
-	plt.title("Measured T1(t) in 1-minute windows (timing noise)")
-	plt.xlabel("Minute window")
-	plt.ylabel("T1(t) = A2(t)/A1(t)")
+	plt.figure(figsize=(10, 5))
+	plt.plot(range(1, minutes + 1), low_volume_T, marker="o", markersize=3, linestyle="-", color="#d62728", alpha=0.7, label="20 users/min (low volume)", linewidth=1.5)
+	plt.plot(range(1, minutes + 1), mid_volume_T, marker="o", markersize=3, linestyle="-", color="#ff7f0e", alpha=0.8, label="200 users/min (medium)", linewidth=1.5)
+	plt.plot(range(1, minutes + 1), high_volume_T, marker="o", markersize=3, linestyle="-", color="#2ca02c", alpha=0.9, label="2000 users/min (high volume)", linewidth=1.5)
+	plt.hlines(p_success, 1, minutes, colors="black", linestyles="dashed", label=f"True probability (p={p_success})", linewidth=2)
+	plt.title("Impact of Volume on Timing Noise: Single Transition T1(t)", fontsize=12, fontweight="bold")
+	plt.xlabel("Time window (1-minute buckets)", fontsize=11)
+	plt.ylabel("Measured T1(t) = A2(t) / A1(t)", fontsize=11)
 	plt.ylim(0, 1.1)
-	plt.legend()
+	plt.legend(loc="best", fontsize=9)
+	plt.grid(axis="y", alpha=0.3)
 	plt.tight_layout()
-	plt.savefig(filename)
+	plt.savefig(filename, dpi=150)
 	plt.close()
 
 
@@ -335,20 +389,22 @@ def plot_window_volume_consistency(filename: str = "images/plot13.png") -> None:
 	- a clearly "bad" window where some steps have wildly different counts.
 	"""
 	labels = ["Step 1", "Step 2", "Step 3", "Step 4", "Step 5"]
-	good_counts = [100, 100, 100, 100, 100]
-	bad_counts = [100, 10_000, 100, 500_000, 100]
+	good_counts = [1000, 900, 810, 729, 729]  # Realistic gradual decline
+	bad_counts = [1000, 10_000, 100, 500_000, 50]  # Clearly wrong
 	positions = range(len(labels))
 	width = 0.35
-	plt.figure(figsize=(8, 4))
-	plt.bar([p - width / 2 for p in positions], good_counts, width=width, label="Good window", color="#1f77b4")
-	plt.bar([p + width / 2 for p in positions], bad_counts, width=width, label="Bad window", color="#7f7f7f")
-	plt.xticks(list(positions), labels)
+	plt.figure(figsize=(10, 5))
+	plt.bar([p - width / 2 for p in positions], good_counts, width=width, label="Good: window fits user journeys", color="#2ca02c", alpha=0.8)
+	plt.bar([p + width / 2 for p in positions], bad_counts, width=width, label="Bad: window too small", color="#d62728", alpha=0.8)
+	plt.xticks(list(positions), labels, fontsize=10)
 	plt.yscale("log")
-	plt.title("Per-step request volume in a single time window")
-	plt.ylabel("Requests (log scale)")
-	plt.legend()
+	plt.title("Window Sizing: Good vs. Bad Per-Step Volumes", fontsize=12, fontweight="bold")
+	plt.ylabel("Requests per step (log scale)", fontsize=11)
+	plt.xlabel("Flow step", fontsize=11)
+	plt.legend(fontsize=10)
+	plt.grid(axis="y", alpha=0.3, which="both")
 	plt.tight_layout()
-	plt.savefig(filename)
+	plt.savefig(filename, dpi=150)
 	plt.close()
 
 
@@ -427,9 +483,9 @@ if __name__ == "__main__":
 		jitter=0.1,
 	)
 
-	# Test-failure scenarios: T2 success drops to 0.3 (70% failure) in the test phase
-	test_fail_low = FlowScenario(name="Fail T2=0.3, 100 req", A1=100, transitions=[0.9, 0.3, 0.9, 1.0])
-	test_fail_high = FlowScenario(name="Fail T2=0.3, 1M req", A1=1_000_000, transitions=[0.9, 0.3, 0.9, 1.0])
+	# Test-failure scenarios: T2 success drops to 0.8 (10% degradation) in the test phase
+	test_fail_low = FlowScenario(name="Fail T2=0.8, 100 req", A1=100, transitions=[0.9, 0.8, 0.9, 1.0])
+	test_fail_high = FlowScenario(name="Fail T2=0.8, 1M req", A1=1_000_000, transitions=[0.9, 0.8, 0.9, 1.0])
 
 	sim_fail_low = SimulationScenario(
 		name="Failure in T2, 100 req",
@@ -477,13 +533,13 @@ if __name__ == "__main__":
 	plot_C_with_limits(
 		sim_fail_low,
 		filename="images/plot11.png",
-		title="C(t) with control limits - failure in T2, 100 requests/window",
+		title="C(t) with control limits - T2 degrades 0.9->0.8, 100 requests/window",
 		highlight_test_phase=True,
 	)
 	plot_C_with_limits(
 		sim_fail_high,
 		filename="images/plot12.png",
-		title="C(t) with control limits - failure in T2, 1M requests/window",
+		title="C(t) with control limits - T2 degrades 0.9->0.8, 1M requests/window",
 		highlight_test_phase=True,
 	)
 

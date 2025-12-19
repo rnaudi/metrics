@@ -79,8 +79,8 @@ All simulations use a 4-step auth flow with these baseline transitions:
 - $T_4 = 1.0$ (final step always succeeds if reached)
 - Baseline conversion: $C = 0.9^3 = 0.729$ (~73%)
 
-We'll compare this to a "broken" scenario where only $T_2$ drops to $0.2$:
-- Broken conversion: $C_\text{bad} = 0.9 \times 0.2 \times 0.9 = 0.162$ (~16%)
+We'll compare this to a "degraded" scenario where only $T_2$ drops to $0.8$:
+- Degraded conversion: $C_\text{degraded} = 0.9 \times 0.8 \times 0.9 = 0.648$ (~65%)
 
 ### Part 1: Basic concepts—what are we measuring?
 
@@ -180,19 +180,19 @@ Same amount of jitter, but with 1M requests per window. The variation barely reg
 
 ### Part 4: Detecting real failures
 
-Finally, let's see what happens when something actually breaks. At window 40, we inject a failure: $T_2$ drops from 0.9 to 0.3 (70% of requests now fail at step 2). The red-shaded region shows the post-failure windows.
+Finally, let's see what happens when something actually degrades. At window 40, we inject a failure: $T_2$ drops from 0.9 to 0.8 (step 2 success drops by 10 percentage points). The shaded region shows the post-failure windows.
 
 #### 4.1 Failure detection at low volume
 
 ![C(t) with control limits – failure in T2, 100 requests](images/plot11.png)
 
-With 100 requests per window, the failure is visible but not super clean. $C(t)$ drops and most post-failure windows sit below the baseline, but there's enough noise that a few windows might not trigger a threshold-based alert. You'd want to require multiple consecutive bad windows before paging.
+With 100 requests per window, the degradation is detectable but noisy. $C(t)$ drops from ~73% to ~65%, and most post-failure windows sit below the baseline, but there's enough natural variation that a few windows might not trigger a threshold-based alert. You'd want to require multiple consecutive bad windows before paging.
 
 #### 4.2 Failure detection at high volume
 
 ![C(t) with control limits – failure in T2, 1M requests](images/plot12.png)
 
-With 1M requests per window, the failure is unmistakable. $C(t)$ drops like a stone and stays far below the control limits. Every single post-failure window would trigger an alert. Detection is instant and unambiguous.
+With 1M requests per window, even this relatively small degradation (10 percentage points) is immediately obvious. $C(t)$ drops cleanly below the control limits and stays there. Every single post-failure window would trigger an alert. Detection is instant and unambiguous.
 
 **Takeaway**: Real failures are detectable at any volume, but high volume gives you faster, cleaner detection with fewer false positives.
 
