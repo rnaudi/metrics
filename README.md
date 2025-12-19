@@ -1,13 +1,13 @@
-# **Journey Flow Metrics**
+# **Journey Metrics**
 
-Model multi-step user journeys (login, signup, checkout, etc.) using simple request counters and ratios. Watch end-to-end conversion with control charts. We call this approach **Journey Flow Metrics**.
+Model multi-step **login and authentication journeys** (login, signup, MFA/OTP, etc.) using simple request counters and ratios. Watch end-to-end conversion with control charts. This README describes one way to define **operational SLOs and conversion metrics** for those flows, using only aggregate request metrics and without relying on funnel tooling or per-user analytics.
 
 ---
 
 
 ## Core idea
 
-Most tools give you **funnels** based on individual users or sessions. They are great for product analysis but:
+Most tools give you **funnels** based on individual users or sessions. They are great for product analysis, and we still rely on them for that. For day-to-day SLOs, alerts, and automation they often:
 - Require custom events and schema work
 - Depend on user/session identity
 - Are awkward to plug directly into SLOs, alerts, and automation
@@ -17,7 +17,7 @@ Instead, this method uses **aggregate metrics only**:
 - Derive simple ratios that behave well at high volume
 - Feed them into standard SPC-style monitoring
 
-This turns user journeys into **operational signals** with:
+This turns auth journeys into **operational signals** with:
 - Low cardinality (few tags, no per-user IDs)
 - Simple math
 - Easy integration in any metrics backend (Prometheus, Datadog, etc.)
@@ -27,17 +27,22 @@ This turns user journeys into **operational signals** with:
 
 We work with time windows (for example, 1, 5, or 15 minutes). For each window $t$:
 
-- **Step** $i$: a state in the journey ("login form", "OTP page", "charge card", etc.).
+- **Step** $i$: a state in the auth journey ("login form", "OTP page", "/authorize", etc.).
 - **Arrival** $A_i(t)$: number of requests entering step $i$ in window $t$.
 - **Transition ratio** $T_i(t)$: fraction of requests that move from step $i$ to step $i+1$:
   $$T_i(t) = \frac{A_{i+1}(t)}{A_i(t)}.$$
-- **Terminal Success**: last step with a clear success condition (for example final HTTP 2xx). We denote it as step $L+1$.
-- **Conversion** $C(t)$: fraction of requests that started in step 1 and ended in Success (step $L+1$):
-  $$C(t) = \frac{A_{L+1}(t)}{A_1(t)} = \prod_{i=1}^L T_i(t).$$
+- **Terminal Success**: last step with a clear success condition (for example final HTTP 2xx). We denote its index as step $S$.
+- **Conversion** $C(t)$: fraction of requests that started in step 1 and ended in Success (step $S$):
+  $$C(t) = \frac{A_{S}(t)}{A_1(t)} = \prod_{i=1}^{S-1} T_i(t).$$
 
 Notes:
 - We count **requests**, not unique users; retries are part of the signal.
 - Ratios $T_i(t)$ and $C(t)$ are volume-agnostic, but their **noise** shrinks with more traffic.
+
+**Assumptions (briefly)**
+- Flows are sequential along the path you are modeling (for example controller chain `/login -> /otp -> /success`).
+- Typical latency between steps is small compared to the chosen window, or at least well bounded. Long-running steps (for example, email verification over hours) either need larger windows and acceptance of lagged signals, or a different tool (funnels, events).
+- Each window has enough traffic that individual requests do not dominate $T_i(t)$ and $C(t)$.
 
 ---
 
@@ -64,21 +69,21 @@ See [src/metrics_demo.py](src/metrics_demo.py) for code that generates the examp
 
 ---
 
-## Beyond strictly linear flows
+## Beyond strictly linear auth flows
 
 The examples above use a simple linear chain of steps (1 → 2 → 3 → 4 → Success).
-Real systems often have optional steps, retries, and branches (for example, different payment providers).
+Real authentication systems often have optional steps, retries, and branches (for example, different MFA methods).
 
-This **Journey Flow Metrics** model still applies: you can define multiple flows or subflows, or group
-several endpoints into a single logical step. As long as you can
-count arrivals $A_i(t)$ and transitions $T_i(t)$ for the paths you care about,
-you can build dashboards for arbitrary user journeys on top of the same
+This **Journey Metrics** model still applies within the login/auth domain: you can define multiple flows or subflows, or group
+several controllers into a single logical step. As long as you can
+count arrivals $A_i(t)$ and transitions $T_i(t)$ for the auth paths you care about,
+you can build dashboards for your authentication journeys on top of the same
 metric-based foundation.
 
 Because this is based on metrics and tags, flows can naturally span multiple
 services and components. Different services (frontend, API gateway,
 backend) can all emit metrics with the same `flow` tag; the metrics backend
-puts them together into a single end-to-end view.
+puts them together into a single end-to-end auth view.
 
 ## Visualizations
 
@@ -147,18 +152,21 @@ These notes help when you roll this out in production.
 - At low volume: prefer 5–15 minute windows and require multiple bad windows before paging.
 - If you know typical step latency, choose window size $W$ roughly $5–10×$ the p95 between steps.
 - That way most users finish a step within one window, so $A_i(t)$ and $A_{i+1}(t)$ stay aligned and timing noise is smaller.
+- If you ever applied this pattern to flows with very long or highly variable gaps between steps (for example email verification that may take hours, human review, or async jobs), this method would become a coarse, laggy signal for conversion, and you would need a different, event-based approach for precise per-journey analysis.
 
 **Control charts**
 - Individuals chart: simple, works when volume per window is roughly stable.
 - P‑chart: better when traffic swings a lot; limits widen at low volume and tighten at high.
 - You can keep limits static from a known-good period and update them occasionally as the system evolves.
+ - If you prefer, you can instead use simple alert rules (for example static SLO-style thresholds on $C(t)$) or built-in anomaly detection / forecasting in your metrics backend, still using the same $T_i(t)$ and $C(t)$ as inputs.
 
 **Non-linear flows**
-- For branches (for example multiple payment methods), define separate subflows and optionally aggregate their conversions.
-- For loops and retries, you can usually treat retries as extra noise in $A_i(t)$ and $T_i(t)$; with enough traffic they average out. Only split out first attempts vs retries if you have a specific reason to do so.
+- In practice each major branch is its own mostly sequential flow (for example `flow=login_password`, `flow=login_sso`, `flow=login_webauthn`).
+- For loops and retries, you can usually treat retries as extra noise in $A_i(t)$ and $T_i(t)$; with enough traffic they average out and a retry storm will naturally show up as a drop in $C(t)$. Split out first attempts vs retries only if you need to distinguish "hard failures" from "eventual success after many retries".
 
 **SLIs, SLOs, and cost**
 - Typical stack: per-endpoint availability + latency **and** flow conversion $C(t)$.
+- A practical flow SLI is the volume-weighted mean conversion over a period $P$: $\text{SLI}_\text{flow}(P) = \frac{\sum_t A_1(t)\,C(t)}{\sum_t A_1(t)}$, which approximates the fraction of attempts that eventually succeed under the assumptions above.
 - Per-step SLOs locate the broken component; End to end conversion flow SLOs say whether the journey works.
 - A small, controlled `flow` tag adds predictable metric cardinality and is usually cheap in managed backends.
 
@@ -193,7 +201,7 @@ $A_i(t)$, $T_i(t)$, and $C(t)$.
 | Synthetic monitoring             | Bots run scripted journeys                                  | Smoke tests, external checks, third parties     | Fake traffic, limited scenarios, no load info |
 | APM / distributed tracing        | Per-request traces across services                          | Deep debugging of specific failures             | High cardinality, sampling, complex queries  |
 | High-cardinality observability   | Stores rich, high-cardinality events and fields            | Ad-hoc "show me all requests where…" queries   | Cost grows with cardinality and usage        |
-| This **Journey Flow Metrics** model  | Aggregate request counters per step and time window        | Cheap, simple flow SLIs and SLOs               | Less flexible for arbitrary ad-hoc questions |
+| This **Journey Metrics** model       | Aggregate request counters per step and time window        | Cheap, simple flow SLIs and SLOs               | Less flexible for arbitrary ad-hoc questions |
 
 #### Real User Monitoring (RUM) / Funnels
 **Tools**: Grafana Faro, Datadog RUM, Google Analytics, Amplitude, Mixpanel
@@ -202,7 +210,7 @@ $A_i(t)$, $T_i(t)$, and $C(t)$.
 - **Strengths**: Rich path analysis, segmentation, "what happened to user X?"
 - **Weaknesses**: Expensive at scale (per-user events), requires user identity, hard to use directly in SLOs.
 - **When to use**: Product analytics, A/B testing with deep segmentation.
-- **This Journey Flow Metrics model**: Cheaper (aggregate counters), no user tracking needed, designed for operational SLOs.
+- **This Journey Metrics model**: Can be cheaper (aggregate counters), needs no user tracking, and is aimed at operational SLOs and alerts. It is not a replacement for product analytics funnels.
 
 #### Synthetic Monitoring
 **Tools**: Datadog Synthetics, Pingdom, Checkly
@@ -211,7 +219,7 @@ $A_i(t)$, $T_i(t)$, and $C(t)$.
 - **Strengths**: Proactive (catches issues before users), consistent baseline.
 - **Weaknesses**: Fake traffic (not real users), limited coverage, can't detect load-dependent issues.
 - **When to use**: Smoke tests, monitoring from multiple regions, testing third-party dependencies.
-- **This Journey Flow Metrics model**: Monitors real user traffic flows, catches load-dependent issues.
+- **This Journey Metrics model**: Monitors real user traffic flows and can complement synthetic checks, especially for load-dependent issues.
 
 #### APM / Distributed Tracing
 **Tools**: Datadog APM, Honeycomb, Lightstep, Jaeger
@@ -220,7 +228,7 @@ $A_i(t)$, $T_i(t)$, and $C(t)$.
 - **Strengths**: Deep per-request visibility, great for debugging specific failures.
 - **Weaknesses**: Expensive (high cardinality), requires sampling at scale, complex queries for aggregate patterns.
 - **When to use**: Incident investigation ("why did this specific request fail?").
-- **This Journey Flow Metrics model**: Aggregate metrics are cheaper, designed for SLOs and alerting.
+- **This Journey Metrics model**: Uses aggregate metrics that can be cheaper at scale and are intended for SLOs and alerting alongside tracing.
 
 #### High-cardinality observability
 **Tools**: Honeycomb, Lightstep, Elastic Observability
@@ -229,20 +237,20 @@ $A_i(t)$, $T_i(t)$, and $C(t)$.
 - **Strengths**: Extreme flexibility ("show me all requests where..." queries).
 - **Weaknesses**: Cost scales with cardinality and query complexity; need to know what to ask.
 - **When to use**: Exploratory analysis, ad-hoc investigation of unknown unknowns.
-- **This Journey Flow Metrics model**: Fixed, low-cardinality metrics ($\approx$10-20 flow values); cheaper, but pre-defined queries only.
+- **This Journey Metrics model**: Uses fixed, low-cardinality metrics ($\approx$10-20 flow values) that are often cheaper, but support only pre-defined questions. It is best suited to regular flow health checks, not open-ended exploration.
 
 ### Closest existing implementation
 
-**Google's internal SRE tools**: Public material describes Google using journey-based SLIs and flow-style metrics internally. This approach is closely aligned with that style (flow-based SLIs with SPC), but their tools are proprietary and not documented.
+**Google's internal SRE tools**: Public material describes Google using journey-based SLIs and flow-style metrics internally. This approach is inspired by that style (flow-based SLIs with SPC), but their tools are proprietary and not documented.
 
 ### Are we reinventing the wheel?
 
-**No.** The pieces already exist:
+The pieces already exist:
 - Journey-based SLIs from the SRE world
 - SPC and control charts from manufacturing and quality work
 - Metrics backends like Prometheus, Datadog, and OpenTelemetry
 
-What this README does is tie those ideas together into one simple pattern for flow SLIs you can alert on.
+What this README is trying to do is tie those ideas together into one small, practical pattern for flow SLIs you can alert on. The intent is to offer a proposal that teams can adapt to their own systems and tweak to fit their context.
 
 ## Refresh visualizations
 
