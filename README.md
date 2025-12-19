@@ -259,70 +259,6 @@ The longest gap is Step 1→2 (let's say p95 is 3 minutes). Using the 5-10× rul
 
 ---
 
-## Advanced notes (optional)
-
-These notes help when you roll this out in production.
-
-**Volume and variance**
-- Ratios are mathematically volume-agnostic, but variance shrinks with more traffic.
-- With very low arrivals per window, $T_i(t)$ and $C(t)$ are noisy; use larger windows or a different tool (funnels, events).
-
-**Time-window selection**
-- At low volume: prefer 5–15 minute windows and require multiple bad windows before paging.
-- If you know typical step latency, choose window size $W$ roughly $5–10×$ the p95 between steps.
-- That way most users finish a step within one window, so $A_i(t)$ and $A_{i+1}(t)$ stay aligned and timing noise is smaller.
-- If you ever applied this pattern to flows with very long or highly variable gaps between steps (for example email verification that may take hours, human review, or async jobs), this method would become a coarse, laggy signal for conversion, and you would need a different, event-based approach for precise per-journey analysis.
-
-**Control charts**
-- Individuals chart: simple, works when volume per window is roughly stable.
-- P‑chart: better when traffic swings a lot; limits widen at low volume and tighten at high.
-- You can keep limits static from a known-good period and update them occasionally as the system evolves.
- - If you prefer, you can instead use simple alert rules (for example static SLO-style thresholds on $C(t)$) or built-in anomaly detection / forecasting in your metrics backend, still using the same $T_i(t)$ and $C(t)$ as inputs.
-
-**Non-linear flows**
-- In practice each major branch is its own mostly sequential flow (for example `flow=login_password`, `flow=login_sso`, `flow=login_webauthn`).
-- For loops and retries, you can usually treat retries as extra noise in $A_i(t)$ and $T_i(t)$; with enough traffic they average out and a retry storm will naturally show up as a drop in $C(t)$. Split out first attempts vs retries only if you need to distinguish "hard failures" from "eventual success after many retries".
-
-**SLIs, SLOs, and cost**
-- Typical stack: per-endpoint availability + latency **and** flow conversion $C(t)$.
-- A practical flow SLI is the volume-weighted mean conversion over a period $P$: $\text{SLI}_\text{flow}(P) = \frac{\sum_t A_1(t)\,C(t)}{\sum_t A_1(t)}$, which approximates the fraction of attempts that eventually succeed under the assumptions above.
-- Per-step SLOs locate the broken component; End to end conversion flow SLOs say whether the journey works.
-- A small, controlled `flow` tag adds predictable metric cardinality and is usually cheap in managed backends.
-
-
-**Traffic mix, bots, and abuse**
-
-- In real systems, not all arrivals are equal: some traffic comes from real users,
-some from automated clients, some from abusive sources. All of it contributes to
-$A_i(t)$, $T_i(t)$, and $C(t)$.
-- If the mix is **stable**, its effect is baked into your baseline and limits.
-- When abuse/bot traffic surges, you often see $A_1(t)$ spike and transitions drop.
-
-## Existing approaches and alternatives
-
-This builds on **Google SRE's journey-based SLIs** ([SRE Workbook](https://sre.google/workbook/implementing-slos/#modeling-user-journeys)) and **Statistical Process Control** from manufacturing. We're sharing one way to implement these ideas with concrete math and guidance.
-
-### Comparison with existing tools
-
-| Approach                         | How it works                                                | What it is best at                              | Main tradeoffs                              |
-|----------------------------------|-------------------------------------------------------------|-------------------------------------------------|---------------------------------------------|
-| Real User Monitoring / Funnels   | Client events per user/session, queried as funnels         | Product analytics, paths, cohorts, UX questions | Needs identity, higher cost, awkward for SLOs |
-| Synthetic monitoring             | Bots run scripted journeys                                  | Smoke tests, external checks, third parties     | Fake traffic, limited scenarios, no load info |
-| APM / distributed tracing        | Per-request traces across services                          | Deep debugging of specific failures             | High cardinality, sampling, complex queries  |
-| High-cardinality observability   | Stores rich, high-cardinality events and fields            | Ad-hoc "show me all requests where…" queries   | Cost grows with cardinality and usage        |
-| This **Journey Metrics** model       | Aggregate request counters per step and time window        | Cheap, simple flow SLIs and SLOs               | Less flexible for arbitrary ad-hoc questions |
-
-**When to use what:**
-- **RUM/Funnels**: Product analytics, user segmentation
-- **Synthetic monitoring**: Smoke tests, uptime checks
-- **APM/Tracing**: Debugging specific failures
-- **High-cardinality**: Exploratory analysis
-- **Journey Metrics**: Cheap flow SLOs and alerts
-
-Not reinventing anything—just tying together journey SLIs, SPC, and standard metrics backends.
-
----
-
 ## Real-world example: OAuth2 Device Code Flow
 
 Let's apply this to a concrete authentication scenario: OAuth2 device authorization for smart TVs, CLI tools, and IoT devices.
@@ -423,6 +359,72 @@ $T_3$ drops from 0.98 to 0.85. Polling timeouts or rate limiting.
 ![OAuth2 - Token validation failure](images/plot20.png)
 
 $T_4$ drops from 0.99 to 0.90. Tokens issued but fail on API calls.
+
+-----
+
+## Advanced notes (optional)
+
+These notes help when you roll this out in production.
+
+**Volume and variance**
+- Ratios are mathematically volume-agnostic, but variance shrinks with more traffic.
+- With very low arrivals per window, $T_i(t)$ and $C(t)$ are noisy; use larger windows or a different tool (funnels, events).
+
+**Time-window selection**
+- At low volume: prefer 5–15 minute windows and require multiple bad windows before paging.
+- If you know typical step latency, choose window size $W$ roughly $5–10×$ the p95 between steps.
+- That way most users finish a step within one window, so $A_i(t)$ and $A_{i+1}(t)$ stay aligned and timing noise is smaller.
+- If you ever applied this pattern to flows with very long or highly variable gaps between steps (for example email verification that may take hours, human review, or async jobs), this method would become a coarse, laggy signal for conversion, and you would need a different, event-based approach for precise per-journey analysis.
+
+**Control charts**
+- Individuals chart: simple, works when volume per window is roughly stable.
+- P‑chart: better when traffic swings a lot; limits widen at low volume and tighten at high.
+- You can keep limits static from a known-good period and update them occasionally as the system evolves.
+ - If you prefer, you can instead use simple alert rules (for example static SLO-style thresholds on $C(t)$) or built-in anomaly detection / forecasting in your metrics backend, still using the same $T_i(t)$ and $C(t)$ as inputs.
+
+**Non-linear flows**
+- In practice each major branch is its own mostly sequential flow (for example `flow=login_password`, `flow=login_sso`, `flow=login_webauthn`).
+- For loops and retries, you can usually treat retries as extra noise in $A_i(t)$ and $T_i(t)$; with enough traffic they average out and a retry storm will naturally show up as a drop in $C(t)$. Split out first attempts vs retries only if you need to distinguish "hard failures" from "eventual success after many retries".
+
+**SLIs, SLOs, and cost**
+- Typical stack: per-endpoint availability + latency **and** flow conversion $C(t)$.
+- A practical flow SLI is the volume-weighted mean conversion over a period $P$: $\text{SLI}_\text{flow}(P) = \frac{\sum_t A_1(t)\,C(t)}{\sum_t A_1(t)}$, which approximates the fraction of attempts that eventually succeed under the assumptions above.
+- Per-step SLOs locate the broken component; End to end conversion flow SLOs say whether the journey works.
+- A small, controlled `flow` tag adds predictable metric cardinality and is usually cheap in managed backends.
+
+
+**Traffic mix, bots, and abuse**
+
+- In real systems, not all arrivals are equal: some traffic comes from real users,
+some from automated clients, some from abusive sources. All of it contributes to
+$A_i(t)$, $T_i(t)$, and $C(t)$.
+- If the mix is **stable**, its effect is baked into your baseline and limits.
+- When abuse/bot traffic surges, you often see $A_1(t)$ spike and transitions drop.
+
+## Existing approaches and alternatives
+
+This builds on **Google SRE's journey-based SLIs** ([SRE Workbook](https://sre.google/workbook/implementing-slos/#modeling-user-journeys)) and **Statistical Process Control** from manufacturing. We're sharing one way to implement these ideas with concrete math and guidance.
+
+### Comparison with existing tools
+
+| Approach                         | How it works                                                | What it is best at                              | Main tradeoffs                              |
+|----------------------------------|-------------------------------------------------------------|-------------------------------------------------|---------------------------------------------|
+| Real User Monitoring / Funnels   | Client events per user/session, queried as funnels         | Product analytics, paths, cohorts, UX questions | Needs identity, higher cost, awkward for SLOs |
+| Synthetic monitoring             | Bots run scripted journeys                                  | Smoke tests, external checks, third parties     | Fake traffic, limited scenarios, no load info |
+| APM / distributed tracing        | Per-request traces across services                          | Deep debugging of specific failures             | High cardinality, sampling, complex queries  |
+| High-cardinality observability   | Stores rich, high-cardinality events and fields            | Ad-hoc "show me all requests where…" queries   | Cost grows with cardinality and usage        |
+| This **Journey Metrics** model       | Aggregate request counters per step and time window        | Cheap, simple flow SLIs and SLOs               | Less flexible for arbitrary ad-hoc questions |
+
+**When to use what:**
+- **RUM/Funnels**: Product analytics, user segmentation
+- **Synthetic monitoring**: Smoke tests, uptime checks
+- **APM/Tracing**: Debugging specific failures
+- **High-cardinality**: Exploratory analysis
+- **Journey Metrics**: Cheap flow SLOs and alerts
+
+Not reinventing anything—just tying together journey SLIs, SPC, and standard metrics backends.
+
+----
 
 ## Refresh visualizations
 
