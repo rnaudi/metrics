@@ -169,15 +169,41 @@ Before looking at full flows, let's see what happens to a single transition $T_1
 
 ![C(t) with control limits – base, 100 requests, jitter 0.05](images/plot9.png)
 
-With 100 requests per window plus realistic jitter ($\pm 5\%$ on each step), $C(t)$ becomes quite noisy. The mean stays around 86% as expected, but individual windows vary significantly. Control limits are wide to accommodate this natural variation. Several windows might drift near the limits even though the underlying flow hasn't changed. This is why low-traffic flows need careful alerting rules—maybe "3 consecutive windows below threshold" instead of "any single window."
+With 100 requests per window and real operational jitter (±5% on each step), $C(t)$ varies significantly. The mean stays around 83% as expected, but individual windows range widely. Control limits must be wide to accommodate this genuine variation.
 
-#### 3.3 High volume with jitter
+#### 3.3 High volume with jitter—same problem persists
 
 ![C(t) with control limits – base, 1M requests, jitter 0.05](images/plot10.png)
 
-Same flow, same jitter ($\pm 5\%$ per step), but with 1M requests per window. The mean is still ~86%, and now the variation barely registers—almost all points cluster tightly around the mean. Control limits are much tighter. High volume **averages out** the jitter, making the signal reliable even when individual steps vary a bit.
+Same flow, same jitter (±5% per step), but with 1M requests per window. The mean is still ~83%, and notice: **the control limits barely tighten**. The variation is still there because it's REAL—each window genuinely has different success rates.
 
-**Takeaway**: With the same underlying flow and variability, higher volume gives you tighter control limits and more stable measurements. This makes your metrics robust to normal operational variation and lets you detect smaller degradations.
+**Critical insight**: Higher volume reduces **sampling noise**, but it does NOT eliminate **real process variation**. If your success rates genuinely fluctuate ±5% window-to-window (due to load, time-of-day, etc.), that variation persists at any traffic level. Jitter is signal, not noise.
+
+#### 3.4 What can you do about jitter?
+
+If your production metrics look like this—wide control limits even at high volume—you have real operational variability. Options:
+
+**Option 1: Increase window size**
+- Use 15 or 30-minute windows instead of 5-minute windows
+- Averages out short-term fluctuations
+- Trade-off: slower detection of real problems
+
+**Option 2: Use moving averages**
+- Track rolling average of $C(t)$ over last N windows
+- Smooths the signal, easier to spot trends
+- Trade-off: adds lag to detection
+
+**Option 3: Accept wider limits**
+- Set alert thresholds well below the jitter band
+- Only alert on clear, sustained degradation (e.g., "5 consecutive windows below 75%")
+- Requires distinguishing "normal jitter" from "real failure"
+
+**Option 4: Reduce the jitter itself**
+- Investigate and fix the root causes of variability
+- Load balancing, caching, performance optimization
+- This is often the best long-term solution
+
+**Takeaway**: Jitter is real variation in your system's behavior. Volume alone won't fix it—you need to either smooth the signal (bigger windows, moving averages) or fix the underlying variability.
 
 ---
 
