@@ -146,15 +146,18 @@ At 1 million requests per window, $C(t)$ is nearly a flat line. Sampling noise i
 
 ---
 
-### Part 3: Real-world variability—jitter and timing effects
+### Part 3: Real-world variability—when success rates actually fluctuate
 
-Production systems aren't perfectly stable. Step success rates vary slightly window-to-window due to:
+Production systems aren't perfectly stable. Step success rates genuinely vary window-to-window due to:
 - Minor performance fluctuations
 - Different user cohorts
-- Time-of-day effects
+- Time-of-day effects  
 - Network conditions
+- Load variations
 
-To demonstrate this, we'll use a healthier baseline flow ($T_i = 0.95$, giving $C \approx 86\%$) with **jitter**: each $T_i$ varies randomly within $\pm 0.05$ around its nominal value per window. This creates realistic operational variability while keeping the underlying mean constant.
+This isn't measurement noise—it's **real variation in the process itself**. We model this as **jitter**: each $T_i$ varies randomly within $\pm 0.05$ (±5 percentage points) around its nominal value per window.
+
+To demonstrate this, we use a healthier baseline flow ($T_i = 0.95$, giving mean $C \approx 86\%$) with realistic jitter added. The key question: **does higher volume make this variation disappear?**
 
 #### 3.1 Timing noise in a single transition
 
