@@ -181,32 +181,36 @@ Same flow, same jitter (±5% per step), but with 1M requests per window. The mea
 
 #### 3.4 What can you do about jitter?
 
-If your production metrics look like this—wide control limits even at high volume—you have real operational variability. Options:
+If your production metrics look like this—wide control limits even at high volume—you have real operational variability. A few approaches:
 
-**Option 1: Increase window size**
+**Increase window size**
 - Use 15 or 30-minute windows instead of 5-minute windows
 - Averages out short-term fluctuations
-- Trade-off: slower detection of real problems
+- Downside: slower detection of real problems
 
-**Option 2: Use moving averages** ⭐
+**Use moving averages**
 - Track rolling average of $C(t)$ over last N windows
 - Compute control limits from the smoothed series, not raw values
-- Smooths the signal, easier to spot trends
-- Trade-off: adds lag to detection
+- Downside: adds lag to detection
 
-Let's see this in action:
+**Accept wider limits**
+- Set alert thresholds well below the jitter band
+- Only alert on clear, sustained degradation (e.g., "5 consecutive windows below 75%")
+- You'll need to distinguish "normal jitter" from "real failure"
 
-#### 3.5 Moving average control limits—the solution
+**Reduce the jitter itself**
+- Investigate and fix the root causes of variability
+- Load balancing, caching, performance optimization
+- Often the best long-term solution
+
+#### 3.5 Moving average control limits
 
 ![C(t) with moving average control limits](images/plot15.png)
 
-Here's the same high-volume jittered scenario (1M requests, ±5% jitter), but now we:
-1. Compute a 5-window moving average of $C(t)$ (blue line)
-2. Calculate control limits from the smoothed series, not the raw values (gray dots)
+Same high-volume jittered scenario (1M requests, ±5% jitter), but now we compute a 5-window moving average of $C(t)$ (blue line) and calculate control limits from that smoothed series instead of the raw values (gray dots).
 
-**Result**: The control limits are now MUCH tighter! The moving average filters out the jitter, revealing the true underlying trend. If a real degradation occurs, it will stand out clearly against these tighter limits.
+The control limits are much tighter. The moving average filters out the jitter, so when real degradation occurs it stands out clearly against these narrower bands.
 
-**How to implement**:
 ```python
 # Compute 5-window moving average
 ma_C = rolling_mean(C_series, window=5)
@@ -216,17 +220,7 @@ if ma_C < lower_limit:
     alert("Flow degraded")
 ```
 
-**Trade-off**: A 5-window MA adds ~2-3 windows of lag to detection (if windows are 5 minutes, that's ~10-15 min delay). But you get much cleaner signals and fewer false positives.
-
-**Option 3: Accept wider limits**
-- Set alert thresholds well below the jitter band
-- Only alert on clear, sustained degradation (e.g., "5 consecutive windows below 75%")
-- Requires distinguishing "normal jitter" from "real failure"
-
-**Option 4: Reduce the jitter itself**
-- Investigate and fix the root causes of variability
-- Load balancing, caching, performance optimization
-- This is often the best long-term solution
+A 5-window MA adds ~2-3 windows of lag to detection (if windows are 5 minutes, that's ~10-15 min delay). The payoff is much cleaner signals and fewer false positives.
 
 **Takeaway**: Jitter is real variation in your system's behavior. Volume alone won't fix it—you need to either smooth the signal (bigger windows, moving averages) or fix the underlying variability.
 
