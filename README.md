@@ -7,20 +7,20 @@ Model multi-step **login and authentication journeys** (login, signup, MFA/OTP, 
 
 ## Core idea
 
-Most tools give you **funnels** based on individual users or sessions. They are great for product analysis, and we still rely on them for that. For day-to-day SLOs, alerts, and automation they often:
-- Require custom events and schema work
+Many tools give you **funnels** based on individual users or sessions. They're excellent for product analysis, and we rely on them for that. For day-to-day SLOs, alerts, and automation, we've found some challenges:
+- Often require custom events and schema work
 - Depend on user/session identity
-- Are awkward to plug directly into SLOs, alerts, and automation
+- Can be tricky to plug directly into SLOs, alerts, and automation
 
-Instead, this method uses **aggregate metrics only**:
+This approach explores using **aggregate metrics only**:
 - Count **requests** per step per window (no user IDs)
 - Derive simple ratios that behave well at high volume
 - Feed them into standard SPC-style monitoring
 
-This turns auth journeys into **operational signals** with:
+This aims to turn auth journeys into **operational signals** with:
 - Low cardinality (few tags, no per-user IDs)
-- Simple math
-- Easy integration in any metrics backend (Prometheus, Datadog, etc.)
+- Relatively simple math
+- Straightforward integration in most metrics backends (Prometheus, Datadog, etc.)
 
 
 ## Concepts and notation
@@ -209,10 +209,10 @@ $A_i(t)$, $T_i(t)$, and $C(t)$.
 
 ### Conceptual foundation
 
-**Google SRE journey-based SLIs**: Google's [SRE Workbook](https://sre.google/workbook/implementing-slos/#modeling-user-journeys) describes modeling user journeys for SLOs, but provides limited implementation details. Here is one way to apply that idea:
+**Google SRE journey-based SLIs**: Google's [SRE Workbook](https://sre.google/workbook/implementing-slos/#modeling-user-journeys) describes modeling user journeys for SLOs, but provides limited implementation details. This is our attempt at one way to apply that idea:
 - Explicit mathematical formulas 
 - Statistical Process Control adaptation for time-windowed metrics
-- Practical guidance on when the approach works and when it doesn't
+- Practical guidance on when the approach might work and when it might not
 
 **Statistical Process Control (SPC)**: Control charts for quality monitoring come from manufacturing. We use these ideas for:
 - Time-windowed request flows 
@@ -271,12 +271,12 @@ $A_i(t)$, $T_i(t)$, and $C(t)$.
 
 ### Are we reinventing the wheel?
 
-The pieces already exist:
+Not really—the pieces already exist:
 - Journey-based SLIs from the SRE world
 - SPC and control charts from manufacturing and quality work
 - Metrics backends like Prometheus, Datadog, and OpenTelemetry
 
-What this README is trying to do is tie those ideas together into one small, practical pattern for flow SLIs you can alert on. The intent is to offer a proposal that teams can adapt to their own systems and tweak to fit their context.
+What we're hoping to do is share one way we've tied those ideas together. We'd love feedback on whether this resonates with your experience, and we expect teams will want to adapt and tweak this to fit their specific context.
 
 ## Refresh visualizations
 
