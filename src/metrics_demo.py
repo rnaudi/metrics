@@ -256,6 +256,15 @@ def compute_individuals_control_limits(series: List[float], stable_windows: int)
 	lcl = max(0.0, lcl)
 	return mean_C, ucl, lcl
 
+def compute_moving_average(series: List[float], window: int) -> List[float]:
+	"""Compute simple moving average over a window."""
+	ma = []
+	for i in range(len(series)):
+		start = max(0, i - window + 1)
+		window_vals = series[start:i+1]
+		ma.append(sum(window_vals) / len(window_vals))
+	return ma
+
 def plot_C_with_limits(
 	sim: SimulationScenario,
 	filename: str = "images/plot7.png",
@@ -288,6 +297,56 @@ def plot_C_with_limits(
 	plt.plot(windows, C_series, marker="o", markersize=4, color="#1f77b4", label="C(t)", linewidth=1.5, alpha=0.8)
 	
 	plt.title(title or "End-to-End Conversion C(t) with Control Limits", fontsize=12, fontweight="bold")
+	plt.xlabel("Time window", fontsize=11)
+	plt.ylabel("Conversion Ratio C(t)", fontsize=11)
+	plt.ylim(0, 1)
+	plt.grid(axis="y", alpha=0.3)
+	plt.legend(loc="best", fontsize=9)
+	plt.tight_layout()
+	plt.savefig(filename, dpi=150)
+	plt.close()
+
+def plot_C_with_moving_average_limits(
+	sim: SimulationScenario,
+	ma_window: int,
+	filename: str = "images/plot15.png",
+	title: str | None = None,
+) -> None:
+	"""Plot C(t) with control limits computed from moving average.
+	
+	Shows both raw C(t) and smoothed moving average, with control limits
+	computed from the MA series to demonstrate how smoothing helps with jitter.
+	"""
+	C_series = sim.simulate_C_series()
+	windows = list(range(1, len(C_series) + 1))
+	
+	# Compute moving average
+	ma_series = compute_moving_average(C_series, ma_window)
+	
+	# Compute control limits from the moving average (using stable period)
+	limits = compute_individuals_control_limits(ma_series, stable_windows=sim.base_length)
+	if limits is None:
+		return
+	mean_C, ucl, lcl = limits
+	
+	plt.figure(figsize=(10, 5))
+	
+	# Plot raw C(t) with transparency
+	plt.plot(windows, C_series, marker="o", markersize=3, color="#cccccc", 
+			 label="Raw C(t)", linewidth=1, alpha=0.5, linestyle="-")
+	
+	# Plot moving average
+	plt.plot(windows, ma_series, marker="o", markersize=4, color="#1f77b4", 
+			 label=f"Moving avg (window={ma_window})", linewidth=2, alpha=0.9)
+	
+	# Plot control limits (computed from MA)
+	plt.hlines(mean_C, 1, len(windows), colors="#1f77b4", linestyles="dashed", 
+			   label=f"Mean MA = {mean_C:.3f}", linewidth=2)
+	plt.hlines(ucl, 1, len(windows), colors="#666666", linestyles="dotted", 
+			   label=f"Control limits (from MA)", linewidth=1.5)
+	plt.hlines(lcl, 1, len(windows), colors="#666666", linestyles="dotted", linewidth=1.5)
+	
+	plt.title(title or "C(t) with Moving Average Control Limits", fontsize=12, fontweight="bold")
 	plt.xlabel("Time window", fontsize=11)
 	plt.ylabel("Conversion Ratio C(t)", fontsize=11)
 	plt.ylim(0, 1)
@@ -550,7 +609,13 @@ if __name__ == "__main__":
 	# Optional extra plots (not all are used in the README)
 	# Timing noise for a single transition T1(t)
 	plot8_timing_noise(p_success=normal_scenario.transitions[1])
-	# Effect of adding more steps
-	plot9_steps_effect(filename="images/plot15.png")
 	# Per-step request volume consistency in one window
 	plot_window_volume_consistency()
+	
+	# Moving average control limits demo (solves jitter problem)
+	plot_C_with_moving_average_limits(
+		sim_base_high_jitter,
+		ma_window=5,
+		filename="images/plot15.png",
+		title="C(t) with Moving Average Control Limits - solves jitter problem",
+	)

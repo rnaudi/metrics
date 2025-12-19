@@ -188,10 +188,35 @@ If your production metrics look like this—wide control limits even at high vol
 - Averages out short-term fluctuations
 - Trade-off: slower detection of real problems
 
-**Option 2: Use moving averages**
+**Option 2: Use moving averages** ⭐
 - Track rolling average of $C(t)$ over last N windows
+- Compute control limits from the smoothed series, not raw values
 - Smooths the signal, easier to spot trends
 - Trade-off: adds lag to detection
+
+Let's see this in action:
+
+#### 3.5 Moving average control limits—the solution
+
+![C(t) with moving average control limits](images/plot15.png)
+
+Here's the same high-volume jittered scenario (1M requests, ±5% jitter), but now we:
+1. Compute a 5-window moving average of $C(t)$ (blue line)
+2. Calculate control limits from the smoothed series, not the raw values (gray dots)
+
+**Result**: The control limits are now MUCH tighter! The moving average filters out the jitter, revealing the true underlying trend. If a real degradation occurs, it will stand out clearly against these tighter limits.
+
+**How to implement**:
+```python
+# Compute 5-window moving average
+ma_C = rolling_mean(C_series, window=5)
+
+# Use MA for control limits, alert when MA crosses threshold
+if ma_C < lower_limit:
+    alert("Flow degraded")
+```
+
+**Trade-off**: A 5-window MA adds ~2-3 windows of lag to detection (if windows are 5 minutes, that's ~10-15 min delay). But you get much cleaner signals and fewer false positives.
 
 **Option 3: Accept wider limits**
 - Set alert thresholds well below the jitter band
