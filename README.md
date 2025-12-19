@@ -72,97 +72,146 @@ See [src/metrics_demo.py](src/metrics_demo.py) for code that generates the examp
 
 ## Visualizations
 
-The demo script uses a simple scenario with:
-- $A_1 = 1000$
-- Normal case: $T_1 = T_2 = T_3 = 0.9$, $T_4 = 1.0$
-- "Bad" case: only $T_2$ drops to 0.2
+The following visualizations tell a story about how this approach behaves under different conditions. We'll start with basic concepts, then explore how **volume**, **jitter**, and **failures** affect what you see.
 
-From this you get:
-- Normal flow: $C_\text{normal} = 0.9^3 = 0.729$
-- Bad $T_2$ flow: $C_\text{bad} = 0.9 · 0.2 · 0.9 = 0.162$
+All simulations use a 4-step auth flow with these baseline transitions:
+- $T_1 = T_2 = T_3 = 0.9$ (90% success per step)
+- $T_4 = 1.0$ (final step always succeeds if reached)
+- Baseline conversion: $C = 0.9^3 = 0.729$ (~73%)
 
-Below is what each plot is meant to show.
+We'll compare this to a "broken" scenario where only $T_2$ drops to $0.2$:
+- Broken conversion: $C_\text{bad} = 0.9 \times 0.2 \times 0.9 = 0.162$ (~16%)
 
-### 1. Arrivals per step – normal
+### Part 1: Basic concepts—what are we measuring?
+
+These first plots show the fundamental building blocks: arrivals, transitions, and conversion.
+
+#### 1.1 Arrivals per step – healthy flow
 
 ![Arrivals per step – normal](images/plot1.png)
-- View of $A_1, A_2, A_3, A_4, A_5$ for the normal case.
 
-### 2. Arrivals per step – bad $T_2$
+Starting with 1,000 requests at Step 1, we watch how many make it to each subsequent step. With 90% success per step, we see a gradual decline: Step 1 → 1,000, Step 2 → 900, Step 3 → 810, Step 4 → 729, Final → 729.
+
+#### 1.2 Arrivals per step – broken step
 
 ![Arrivals per step – bad $T_2$](images/plot2.png)
-- Same view, but only $T_2$ is degraded to $0.2$.
 
-### 3. Arrivals per step – normal vs bad (combined)
+Same starting volume, but when $T_2$ drops to 20%, Step 3 onward sees dramatically fewer requests. The drop at Step 2 creates a "cliff" that persists through the rest of the flow.
+
+#### 1.3 Side-by-side comparison
 
 ![Arrivals per step – normal vs bad](images/plot3.png)
-- Bars for normal vs bad flow side by side for each step.
 
-### 4. Transition ratios – normal vs bad
+Comparing both scenarios makes the broken step obvious. This is what you'd investigate when $C(t)$ drops: which $A_i(t)$ shows the biggest change?
+
+#### 1.4 Transition ratios
 
 ![Transition ratios – normal vs bad](images/plot4.png)
-- Bars for $T_1, T_2, T_3, T_4$ in both scenarios.
 
-### 5. End-to-end conversion – two windows
+The per-step view: all transitions look healthy except $T_2$. This pinpoints exactly where the flow broke.
+
+#### 1.5 End-to-end conversion
 
 ![End-to-end conversion – two windows](images/plot5.png)
-- Two bars: $C_\text{normal}$ vs $C_\text{bad}$.
 
-### 6. $C(t)$ with control limits – base, 100 requests/window
+The single number you'd track as your flow SLI: 73% healthy → 16% broken. This is what triggers your alert.
+
+---
+
+### Part 2: Volume matters—sampling noise vs. signal
+
+Now we simulate $C(t)$ over time with control charts. The key question: **how does traffic volume affect our ability to detect problems?**
+
+We use the same healthy flow ($T_i = 0.9$), but vary the number of requests per window. Control limits (dashed lines) are computed from the data using Statistical Process Control methods.
+
+#### 2.1 Low volume: 100 requests/window
 
 ![C(t) with control limits – base, 100 requests](images/plot6.png)
-- Simulated flow with $T_1 = T_2 = T_3 = 0.9$, $T_4 = 1.0$.
-- Each window has about 100 requests entering step 1; transitions are kept fixed (no extra jitter) so most of the variation comes from sampling noise at low volume.
 
-### 7. $C(t)$ with control limits – base, 10k requests/window
+With only 100 requests entering the flow per window, you can see noticeable bounce even though nothing actually changed. This is pure **sampling noise**—like flipping 100 coins vs. 10,000 coins. The control limits are fairly wide to account for this natural variation.
+
+#### 2.2 Medium volume: 10k requests/window
 
 ![C(t) with control limits – base, 10k requests](images/plot7.png)
-- Same base flow as above, but with about $10^4$ requests entering step 1 per window.
-- This is the "smooth" base case: $C(t)$ hugs the mean and the control limits are fairly tight.
 
-### 8. Measured $T_1(t)$ in 1-minute windows (timing noise)
+At 10,000 requests per window, $C(t)$ becomes much smoother. The control limits tighten significantly. This is a comfortable operating range for most production auth flows—enough volume to be confident in the signal.
 
-![Measured T1(t) in 1-minute windows (timing noise)](images/plot8.png)
-- Simulated measurements of a single transition $T_1(t) = A_2(t)/A_1(t)$ in 1-minute windows.
-- Three traffic levels are shown: about 20, 200, and 2000 new requests per minute entering step 1.
-- All three use the same underlying success probability, but the low-volume series is much noisier; higher volume averages out timing effects and sampling noise.
-
-### 9. $C(t)$ with control limits – base, 100 requests + jitter 0.3
-
-![C(t) with control limits – base, 100 requests, jitter 0.3](images/plot9.png)
-- Base flow with 100 requests per window and extra per-window jitter on each $T_i$ (up to about $\pm 0.3$).
-- Shows how, at low volume, it is hard to tell apart genuine step changes from noisy windows.
-
-### 10. $C(t)$ with control limits – base, 1M requests + jitter 0.3
-
-![C(t) with control limits – base, 1M requests, jitter 0.3](images/plot10.png)
-- Same jittered transitions as above, but with $10^6$ requests per window.
-- Control limits are tight and most of the jitter stays inside the band; true structural changes would still stand out.
-
-### 11. $C(t)$ with control limits – failure in $T_2$, 100 requests/window
-
-![C(t) with control limits – failure in T2, 100 requests](images/plot11.png)
-- First half of the windows use the healthy base flow; second half simulate a change where $T_2$ drops from $0.9$ to $0.3$ (70\% of requests fail that step).
-- With only 100 requests per window, there is visible noise, but the post-change windows still sit mostly below the baseline band.
-
-### 12. $C(t)$ with control limits – failure in $T_2$, 1M requests/window
-
-![C(t) with control limits – failure in T2, 1M requests](images/plot12.png)
-- Same failure-in-$T_2$ scenario as above, but with $10^6$ requests per window.
-- The change is very obvious: $C(t)$ after the failure stays well below the control limits derived from the healthy period.
-
-### 13. Per-step request volume in a single window
-
-![Per-step request volume in a single window](images/plot13.png)
-- Two synthetic examples of $A_i(t)$ for a single time window.
-- The "good" window has roughly similar request counts at each step; the "bad" window has wildly different per-step volumes (for example 100, 10k, 100, 500k, 100).
-- In practice, if real metrics look like the "bad" example for a supposedly steady flow, it is a strong hint that the time window is poorly chosen relative to step timing distributions.
-
-### 14. $C(t)$ with control limits – base, 1M requests/window
+#### 2.3 High volume: 1M requests/window
 
 ![C(t) with control limits – base, 1M requests](images/plot14.png)
-- Same base flow as plots 6 and 7 ($T_1 = T_2 = T_3 = 0.9$, $T_4 = 1.0$) but with about $10^6$ requests entering step 1 per window.
-- Sampling noise is tiny; $C(t)$ is almost a flat line inside a very narrow band defined by the control limits.
+
+At 1 million requests per window, $C(t)$ is nearly a flat line. Sampling noise is negligible. Even tiny degradations would be immediately obvious. This is what high-scale systems experience—problems become very easy to detect.
+
+**Takeaway**: More traffic = tighter signal. At low volume you need wider thresholds and longer observation periods before alerting.
+
+---
+
+### Part 3: Real-world variability—jitter and timing effects
+
+Production systems aren't perfectly stable. Step success rates vary slightly window-to-window due to:
+- Minor performance fluctuations
+- Different user cohorts
+- Time-of-day effects
+- Network conditions
+
+We model this as **jitter**: each $T_i$ varies randomly within $\pm 0.1$ around its nominal value per window.
+
+#### 3.1 Timing noise in a single transition
+
+![Measured T1(t) in 1-minute windows (timing noise)](images/plot8.png)
+
+Before looking at full flows, let's see what happens to a single transition $T_1(t)$ measured in 1-minute windows. Three volume levels (20, 200, 2000 users/min) all have the same true success rate (90%, dotted line), but low volume shows dramatic window-to-window swings. This is mostly **timing noise**—requests arriving near window boundaries get counted in one window or the next somewhat randomly.
+
+#### 3.2 Low volume with jitter
+
+![C(t) with control limits – base, 100 requests, jitter 0.1](images/plot9.png)
+
+With 100 requests per window plus realistic jitter, $C(t)$ becomes quite noisy. Several windows drift near or beyond the control limits even though nothing is fundamentally broken. This is why low-traffic flows need careful alerting rules—maybe "3 consecutive windows below threshold" instead of "any single window."
+
+#### 3.3 High volume with jitter
+
+![C(t) with control limits – base, 1M requests, jitter 0.1](images/plot10.png)
+
+Same amount of jitter, but with 1M requests per window. The variation barely registers—almost all points stay comfortably within the control band. High volume **averages out** the jitter, making the signal reliable even when individual steps vary a bit.
+
+**Takeaway**: Jitter and timing effects hurt most at low volume. High volume makes your metrics robust to normal operational variation.
+
+---
+
+### Part 4: Detecting real failures
+
+Finally, let's see what happens when something actually breaks. At window 40, we inject a failure: $T_2$ drops from 0.9 to 0.3 (70% of requests now fail at step 2). The red-shaded region shows the post-failure windows.
+
+#### 4.1 Failure detection at low volume
+
+![C(t) with control limits – failure in T2, 100 requests](images/plot11.png)
+
+With 100 requests per window, the failure is visible but not super clean. $C(t)$ drops and most post-failure windows sit below the baseline, but there's enough noise that a few windows might not trigger a threshold-based alert. You'd want to require multiple consecutive bad windows before paging.
+
+#### 4.2 Failure detection at high volume
+
+![C(t) with control limits – failure in T2, 1M requests](images/plot12.png)
+
+With 1M requests per window, the failure is unmistakable. $C(t)$ drops like a stone and stays far below the control limits. Every single post-failure window would trigger an alert. Detection is instant and unambiguous.
+
+**Takeaway**: Real failures are detectable at any volume, but high volume gives you faster, cleaner detection with fewer false positives.
+
+---
+
+### Part 5: Window sizing—does your data make sense?
+
+One common mistake is choosing windows that are too small relative to step timing. Here's how to tell if your window size is wrong:
+
+#### 5.1 Good vs. bad window choices
+
+![Per-step request volume in a single window](images/plot13.png)
+
+- **Good window (blue)**: Each step sees roughly similar request volume. This suggests most user journeys fit within a single window.
+- **Bad window (gray)**: Wildly different volumes per step, with some steps seeing 1000× more traffic than others. This usually means your window is too small and user journeys are getting split across multiple windows.
+
+If your production metrics look like the "bad" example, your transition ratios $T_i(t)$ won't make sense because you're comparing requests from different user cohorts.
+
+**Fix**: Increase window size until step volumes become roughly consistent (within 2-3× of each other for sequential flows).
 
 ---
 
