@@ -154,7 +154,7 @@ Production systems aren't perfectly stable. Step success rates vary slightly win
 - Time-of-day effects
 - Network conditions
 
-We model this as **jitter**: each $T_i$ varies randomly within $\pm 0.1$ around its nominal value per window.
+To demonstrate this, we'll use a healthier baseline flow ($T_i = 0.95$, giving $C \approx 86\%$) with **jitter**: each $T_i$ varies randomly within $\pm 0.05$ around its nominal value per window. This creates realistic operational variability while keeping the underlying mean constant.
 
 #### 3.1 Timing noise in a single transition
 
@@ -164,17 +164,17 @@ Before looking at full flows, let's see what happens to a single transition $T_1
 
 #### 3.2 Low volume with jitter
 
-![C(t) with control limits – base, 100 requests, jitter 0.1](images/plot9.png)
+![C(t) with control limits – base, 100 requests, jitter 0.05](images/plot9.png)
 
-With 100 requests per window plus realistic jitter, $C(t)$ becomes quite noisy. Several windows drift near or beyond the control limits even though nothing is fundamentally broken. This is why low-traffic flows need careful alerting rules—maybe "3 consecutive windows below threshold" instead of "any single window."
+With 100 requests per window plus realistic jitter ($\pm 5\%$ on each step), $C(t)$ becomes quite noisy. The mean stays around 86% as expected, but individual windows vary significantly. Control limits are wide to accommodate this natural variation. Several windows might drift near the limits even though the underlying flow hasn't changed. This is why low-traffic flows need careful alerting rules—maybe "3 consecutive windows below threshold" instead of "any single window."
 
 #### 3.3 High volume with jitter
 
-![C(t) with control limits – base, 1M requests, jitter 0.1](images/plot10.png)
+![C(t) with control limits – base, 1M requests, jitter 0.05](images/plot10.png)
 
-Same amount of jitter, but with 1M requests per window. The variation barely registers—almost all points stay comfortably within the control band. High volume **averages out** the jitter, making the signal reliable even when individual steps vary a bit.
+Same flow, same jitter ($\pm 5\%$ per step), but with 1M requests per window. The mean is still ~86%, and now the variation barely registers—almost all points cluster tightly around the mean. Control limits are much tighter. High volume **averages out** the jitter, making the signal reliable even when individual steps vary a bit.
 
-**Takeaway**: Jitter and timing effects hurt most at low volume. High volume makes your metrics robust to normal operational variation.
+**Takeaway**: With the same underlying flow and variability, higher volume gives you tighter control limits and more stable measurements. This makes your metrics robust to normal operational variation and lets you detect smaller degradations.
 
 ---
 

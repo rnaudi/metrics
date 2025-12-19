@@ -465,22 +465,26 @@ if __name__ == "__main__":
 		jitter=0.0,
 	)
 
-	# Same base, but with additional per-window jitter on each T_i
+	# Same base but with higher success rate (0.95) and jitter scenarios
+	jitter_transitions = [0.95, 0.95, 0.95, 1.0]
+	jitter_low = FlowScenario(name="Jitter 0.95, 100 req", A1=100, transitions=jitter_transitions)
+	jitter_high = FlowScenario(name="Jitter 0.95, 1M req", A1=1_000_000, transitions=jitter_transitions)
+	
 	sim_base_low_jitter = SimulationScenario(
-		name="Base, 100 req, jitter 0.1",
-		base=base_low,
+		name="Base, 100 req, jitter 0.05",
+		base=jitter_low,
 		base_length=40,
-		test=base_low,
+		test=jitter_low,
 		test_length=0,
-		jitter=0.1,
+		jitter=0.05,
 	)
 	sim_base_high_jitter = SimulationScenario(
-		name="Base, 1M req, jitter 0.1",
-		base=base_high,
+		name="Base, 1M req, jitter 0.05",
+		base=jitter_high,
 		base_length=40,
-		test=base_high,
+		test=jitter_high,
 		test_length=0,
-		jitter=0.1,
+		jitter=0.05,
 	)
 
 	# Test-failure scenarios: T2 success drops to 0.8 (10% degradation) in the test phase
@@ -523,12 +527,12 @@ if __name__ == "__main__":
 	plot_C_with_limits(
 		sim_base_low_jitter,
 		filename="images/plot9.png",
-		title="C(t) with control limits - base, 100 requests/window, jitter 0.1",
+		title="C(t) with control limits - T=0.95, 100 requests/window, jitter 0.05",
 	)
 	plot_C_with_limits(
 		sim_base_high_jitter,
 		filename="images/plot10.png",
-		title="C(t) with control limits - base, 1M requests/window, jitter 0.1",
+		title="C(t) with control limits - T=0.95, 1M requests/window, jitter 0.05",
 	)
 	plot_C_with_limits(
 		sim_fail_low,
