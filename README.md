@@ -108,20 +108,61 @@ Below is what each plot is meant to show.
 ![End-to-end conversion – two windows](images/plot5.png)
 - Two bars: $C_\text{normal}$ vs $C_\text{bad}$.
 
-### 6. Time series of $C(t)$
+### 6. $C(t)$ with control limits – base, 100 requests/window
 
-![Time series of C(t) – SPC-style](images/plot6.png)
-- $C(t)$ over time; first half uses healthy $T_2$, second half degraded $T_2$.
+![C(t) with control limits – base, 100 requests](images/plot6.png)
+- Simulated flow with $T_1 = T_2 = T_3 = 0.9$, $T_4 = 1.0$.
+- Each window has about 100 requests entering step 1; transitions are kept fixed (no extra jitter) so most of the variation comes from sampling noise at low volume.
 
-### 7. $C(t)$ with control limits
+### 7. $C(t)$ with control limits – base, 10k requests/window
 
-![C(t) with control limits](images/plot7.png)
-- Same $C(t)$ points with mean and control limits overlaid.
+![C(t) with control limits – base, 10k requests](images/plot7.png)
+- Same base flow as above, but with about $10^4$ requests entering step 1 per window.
+- This is the "smooth" base case: $C(t)$ hugs the mean and the control limits are fairly tight.
 
-### 8. Effect of adding more steps
+### 8. Measured $T_1(t)$ in 1-minute windows (timing noise)
 
-![Effect of adding more steps](images/plot9.png)
-- Plots $C(n) = 0.9^n$ for flows with 1–20 identical steps.
+![Measured T1(t) in 1-minute windows (timing noise)](images/plot8.png)
+- Simulated measurements of a single transition $T_1(t) = A_2(t)/A_1(t)$ in 1-minute windows.
+- Three traffic levels are shown: about 20, 200, and 2000 new requests per minute entering step 1.
+- All three use the same underlying success probability, but the low-volume series is much noisier; higher volume averages out timing effects and sampling noise.
+
+### 9. $C(t)$ with control limits – base, 100 requests + jitter 0.3
+
+![C(t) with control limits – base, 100 requests, jitter 0.3](images/plot9.png)
+- Base flow with 100 requests per window and extra per-window jitter on each $T_i$ (up to about $\pm 0.3$).
+- Shows how, at low volume, it is hard to tell apart genuine step changes from noisy windows.
+
+### 10. $C(t)$ with control limits – base, 1M requests + jitter 0.3
+
+![C(t) with control limits – base, 1M requests, jitter 0.3](images/plot10.png)
+- Same jittered transitions as above, but with $10^6$ requests per window.
+- Control limits are tight and most of the jitter stays inside the band; true structural changes would still stand out.
+
+### 11. $C(t)$ with control limits – failure in $T_2$, 100 requests/window
+
+![C(t) with control limits – failure in T2, 100 requests](images/plot11.png)
+- First half of the windows use the healthy base flow; second half simulate a change where $T_2$ drops from $0.9$ to $0.3$ (70\% of requests fail that step).
+- With only 100 requests per window, there is visible noise, but the post-change windows still sit mostly below the baseline band.
+
+### 12. $C(t)$ with control limits – failure in $T_2$, 1M requests/window
+
+![C(t) with control limits – failure in T2, 1M requests](images/plot12.png)
+- Same failure-in-$T_2$ scenario as above, but with $10^6$ requests per window.
+- The change is very obvious: $C(t)$ after the failure stays well below the control limits derived from the healthy period.
+
+### 13. Per-step request volume in a single window
+
+![Per-step request volume in a single window](images/plot13.png)
+- Two synthetic examples of $A_i(t)$ for a single time window.
+- The "good" window has roughly similar request counts at each step; the "bad" window has wildly different per-step volumes (for example 100, 10k, 100, 500k, 100).
+- In practice, if real metrics look like the "bad" example for a supposedly steady flow, it is a strong hint that the time window is poorly chosen relative to step timing distributions.
+
+### 14. $C(t)$ with control limits – base, 1M requests/window
+
+![C(t) with control limits – base, 1M requests](images/plot14.png)
+- Same base flow as plots 6 and 7 ($T_1 = T_2 = T_3 = 0.9$, $T_4 = 1.0$) but with about $10^6$ requests entering step 1 per window.
+- Sampling noise is tiny; $C(t)$ is almost a flat line inside a very narrow band defined by the control limits.
 
 ---
 
