@@ -1,26 +1,22 @@
 # **Journey Metrics**
 
-Model multi-step **login and authentication journeys** (login, signup, MFA/OTP, etc.) using simple request counters and ratios. Watch end-to-end conversion with control charts. This README describes one way to define **operational SLOs and conversion metrics** for those flows, using only aggregate request metrics and without relying on funnel tooling or per-user analytics.
+Monitor multi-step authentication flows (login, MFA, OAuth) using simple request counters and ratios. Track end-to-end conversion with control charts.
 
 ---
 
-
 ## Core idea
 
-Many tools give you **funnels** based on individual users or sessions. They're excellent for product analysis, and we rely on them for that. For day-to-day SLOs, alerts, and automation, we've found some challenges:
-- Often require custom events and schema work
-- Depend on user/session identity
-- Can be tricky to plug directly into SLOs, alerts, and automation
+Funnel tools are great for product analytics, but for SLOs and alerts we found them tricky—they need user tracking, custom events, and can get expensive.
 
-This approach explores using **aggregate metrics only**:
-- Count **requests** per step per window (no user IDs)
-- Derive simple ratios that behave well at high volume
-- Feed them into standard SPC-style monitoring
+This approach uses **aggregate request counts only**:
+- Count requests per step per window (no user IDs)
+- Compute ratios between steps
+- Monitor with control charts
 
-This aims to turn auth journeys into **operational signals** with:
-- Low cardinality (few tags, no per-user IDs)
-- Relatively simple math
-- Straightforward integration in most metrics backends (Prometheus, Datadog, etc.)
+This gives you:
+- Low cardinality metrics (cheap)
+- Simple math
+- Easy integration with standard metrics backends
 
 
 ## Concepts and notation
@@ -40,10 +36,10 @@ Notes:
 - Ratios $T_i(t)$ and $C(t)$ are volume-agnostic, but their **noise** shrinks with more traffic.
 - This is a request-level signal (including retries), not a per-user funnel metric.
 
-**Assumptions (briefly)**
-- Flows are sequential along the path you are modeling (for example controller chain `/login -> /otp -> /success`).
-- Typical latency between steps is small compared to the chosen window, or at least well bounded. Long-running steps (for example, email verification over hours) either need larger windows and acceptance of lagged signals, or a different tool (funnels, events).
-- Each window has enough traffic that individual requests do not dominate $T_i(t)$ and $C(t)$.
+**Assumptions**
+- Steps are sequential (like `/login -> /otp -> /success`)
+- Latency between steps is small compared to window size or big windows are acceptable (ie. 15 min)
+- Enough traffic that individual requests don't dominate the signal
 
 ---
 
@@ -72,15 +68,9 @@ See [src/metrics_demo.py](src/metrics_demo.py) for code that generates the examp
 
 ## Visualizations
 
-The following visualizations tell a story about how this approach behaves under different conditions. We'll start with basic concepts, then explore how **volume**, **jitter**, and **failures** affect what you see.
+We'll start with basic concepts, then explore how **volume**, **jitter**, and **failures** affect the signal.
 
-All simulations use a 4-step auth flow with these baseline transitions:
-- $T_1 = T_2 = T_3 = 0.9$ (90% success per step)
-- $T_4 = 1.0$ (final step always succeeds if reached)
-- Baseline conversion: $C = 0.9^3 = 0.729$ (~73%)
-
-We'll compare this to a "degraded" scenario where only $T_2$ drops to $0.8$:
-- Degraded conversion: $C_\text{degraded} = 0.9 \times 0.8 \times 0.9 = 0.648$ (~65%)
+All simulations use a 4-step flow: 90% success per step ($T_1 = T_2 = T_3 = 0.9$), giving ~73% end-to-end conversion.
 
 ### Part 1: Basic concepts—what are we measuring?
 
@@ -120,44 +110,35 @@ The single number you'd track as your flow SLI: 73% healthy → 16% broken. This
 
 ### Part 2: Volume matters—sampling noise vs. signal
 
-Now we simulate $C(t)$ over time with control charts. The key question: **how does traffic volume affect our ability to detect problems?**
-
-We use the same healthy flow ($T_i = 0.9$), but vary the number of requests per window. Control limits (dashed lines) are computed from the data using Statistical Process Control methods.
+Key question: **how does traffic volume affect detection?**
 
 #### 2.1 Low volume: 100 requests/window
 
 ![C(t) with control limits – base, 100 requests](images/plot6.png)
 
-With only 100 requests entering the flow per window, you can see noticeable bounce even though nothing actually changed. This is pure **sampling noise**—like flipping 100 coins vs. 10,000 coins. The control limits are fairly wide to account for this natural variation.
+100 requests per window shows noticeable bounce (sampling noise). Control limits need to be wide.
 
 #### 2.2 Medium volume: 10k requests/window
 
 ![C(t) with control limits – base, 10k requests](images/plot7.png)
 
-At 10,000 requests per window, $C(t)$ becomes much smoother. The control limits tighten significantly. This is a comfortable operating range for most production auth flows—enough volume to be confident in the signal.
+10k requests: much smoother, tighter limits. Good operating range for most production flows.
 
 #### 2.3 High volume: 1M requests/window
 
 ![C(t) with control limits – base, 1M requests](images/plot14.png)
 
-At 1 million requests per window, $C(t)$ is nearly a flat line. Sampling noise is negligible. Even tiny degradations would be immediately obvious. This is what high-scale systems experience—problems become very easy to detect.
+1M requests: nearly flat. Even tiny degradations are obvious.
 
-**Takeaway**: More traffic = tighter signal. At low volume you need wider thresholds and longer observation periods before alerting.
+**Takeaway**: More traffic = cleaner signal.
 
 ---
 
-### Part 3: Real-world variability—when success rates actually fluctuate
+### Part 3: Real-world variability—jitter
 
-Production systems aren't perfectly stable. Step success rates genuinely vary window-to-window due to:
-- Minor performance fluctuations
-- Different user cohorts
-- Time-of-day effects  
-- Network conditions
-- Load variations
+Production systems have real variation: performance fluctuations, time-of-day effects, load changes. We model this as **jitter**—each $T_i$ varies ±5% per window.
 
-This isn't measurement noise—it's **real variation in the process itself**. We model this as **jitter**: each $T_i$ varies randomly within $\pm 0.05$ (±5 percentage points) around its nominal value per window.
-
-To demonstrate this, we use a healthier baseline flow ($T_i = 0.95$, giving mean $C \approx 86\%$) with realistic jitter added. The key question: **does higher volume make this variation disappear?**
+Key question: **does higher volume eliminate this variation?**
 
 #### 3.1 Timing noise in a single transition
 
@@ -177,89 +158,58 @@ With 100 requests per window and real operational jitter (±5% on each step), $C
 
 Same flow, same jitter (±5% per step), but with 1M requests per window. The mean is still ~83%, and notice: **the control limits barely tighten**. The variation is still there because it's REAL—each window genuinely has different success rates.
 
-**Critical insight**: Higher volume reduces **sampling noise**, but it does NOT eliminate **real process variation**. If your success rates genuinely fluctuate ±5% window-to-window (due to load, time-of-day, etc.), that variation persists at any traffic level. Jitter is signal, not noise.
+**Key insight**: Volume reduces **sampling noise**, not **real variation**. If your system genuinely fluctuates ±5%, that persists at any scale.
 
 #### 3.4 What can you do about jitter?
 
-If your production metrics look like this—wide control limits even at high volume—you have real operational variability. A few approaches:
-
-**Increase window size**
-- Use 15 or 30-minute windows instead of 5-minute windows
-- Averages out short-term fluctuations
-- Downside: slower detection of real problems
-
-**Use moving averages**
-- Track rolling average of $C(t)$ over last N windows
-- Compute control limits from the smoothed series, not raw values
-- Downside: adds lag to detection
-
-**Accept wider limits**
-- Set alert thresholds well below the jitter band
-- Only alert on clear, sustained degradation (e.g., "5 consecutive windows below 75%")
-- You'll need to distinguish "normal jitter" from "real failure"
-
-**Reduce the jitter itself**
-- Investigate and fix the root causes of variability
-- Load balancing, caching, performance optimization
-- Often the best long-term solution
+Options:
+- **Bigger windows**: 15-30 min instead of 5 min (slower detection)
+- **Moving averages**: smooth the signal (adds lag)
+- **Wider thresholds**: require sustained degradation to alert
+- **Fix the source**: improve system stability (best long-term)
 
 #### 3.5 Moving average control limits
 
 ![C(t) with moving average control limits](images/plot15.png)
 
-Same high-volume jittered scenario (1M requests, ±5% jitter), but now we compute a 5-window moving average of $C(t)$ (blue line) and calculate control limits from that smoothed series instead of the raw values (gray dots).
+Same scenario, but with a 5-window moving average (blue) instead of raw values (gray). Control limits are much tighter—real degradations stand out clearly.
 
-The control limits are much tighter. The moving average filters out the jitter, so when real degradation occurs it stands out clearly against these narrower bands.
-
-```python
-# Compute 5-window moving average
-ma_C = rolling_mean(C_series, window=5)
-
-# Use MA for control limits, alert when MA crosses threshold
-if ma_C < lower_limit:
-    alert("Flow degraded")
-```
-
-A 5-window MA adds ~2-3 windows of lag to detection (if windows are 5 minutes, that's ~10-15 min delay). The payoff is much cleaner signals and fewer false positives.
-
-**Takeaway**: Jitter is real variation in your system's behavior. Volume alone won't fix it—you need to either smooth the signal (bigger windows, moving averages) or fix the underlying variability.
+Tradeoff: adds ~2-3 windows of lag (~10-15 min for 5-min windows), but cleaner signals and fewer false positives.
 
 ---
 
 ### Part 4: Detecting real failures
 
-Finally, let's see what happens when something actually degrades. At window 40, we inject a failure: $T_2$ drops from 0.9 to 0.8 (step 2 success drops by 10 percentage points). The shaded region shows the post-failure windows.
+At window 40, we inject a failure: $T_2$ drops from 0.9 to 0.8.
 
-#### 4.1 Failure detection at low volume
+#### 4.1 Low volume: 100 requests
 
 ![C(t) with control limits – failure in T2, 100 requests](images/plot11.png)
 
-With 100 requests per window, the degradation is detectable but noisy. $C(t)$ drops from ~73% to ~65%, and most post-failure windows sit below the baseline, but there's enough natural variation that a few windows might not trigger a threshold-based alert. You'd want to require multiple consecutive bad windows before paging.
+Detectable but noisy. You'd want multiple bad windows before alerting.
 
-#### 4.2 Failure detection at high volume
+#### 4.2 High volume: 1M requests
 
 ![C(t) with control limits – failure in T2, 1M requests](images/plot12.png)
 
-With 1M requests per window, even this relatively small degradation (10 percentage points) is immediately obvious. $C(t)$ drops cleanly below the control limits and stays there. Every single post-failure window would trigger an alert. Detection is instant and unambiguous.
+Immediately obvious. Every post-failure window would trigger.
 
-**Takeaway**: Real failures are detectable at any volume, but high volume gives you faster, cleaner detection with fewer false positives.
+**Takeaway**: Failures are detectable at any volume, but high volume gives cleaner detection.
 
 ---
 
-### Part 5: Window sizing—does your data make sense?
+### Part 5: Window sizing
 
-One common mistake is choosing windows that are too small relative to step timing. Here's how to tell if your window size is wrong:
+Common mistake: windows too small.
 
 #### 5.1 Good vs. bad window choices
 
 ![Per-step request volume in a single window](images/plot13.png)
 
-- **Good window (blue)**: Each step sees roughly similar request volume. This suggests most user journeys fit within a single window.
-- **Bad window (gray)**: Wildly different volumes per step, with some steps seeing 1000× more traffic than others. This usually means your window is too small and user journeys are getting split across multiple windows.
+- **Good (green)**: Similar volume at each step—journeys fit in one window
+- **Bad (red)**: Volumes vary 1000×—window too small, journeys split across windows
 
-If your production metrics look like the "bad" example, your transition ratios $T_i(t)$ won't make sense because you're comparing requests from different user cohorts.
-
-**Fix**: Increase window size until step volumes become roughly consistent (within 2-3× of each other for sequential flows).
+**Fix**: Increase window size until volumes are within 2-3× of each other.
 
 ---
 
@@ -304,17 +254,7 @@ $A_i(t)$, $T_i(t)$, and $C(t)$.
 
 ## Existing approaches and alternatives
 
-### Conceptual foundation
-
-**Google SRE journey-based SLIs**: Google's [SRE Workbook](https://sre.google/workbook/implementing-slos/#modeling-user-journeys) describes modeling user journeys for SLOs, but provides limited implementation details. This is our attempt at one way to apply that idea:
-- Explicit mathematical formulas 
-- Statistical Process Control adaptation for time-windowed metrics
-- Practical guidance on when the approach might work and when it might not
-
-**Statistical Process Control (SPC)**: Control charts for quality monitoring come from manufacturing. We use these ideas for:
-- Time-windowed request flows 
-- Proportions bounded in [0,1] 
-- Systems with variable traffic volume
+This builds on **Google SRE's journey-based SLIs** ([SRE Workbook](https://sre.google/workbook/implementing-slos/#modeling-user-journeys)) and **Statistical Process Control** from manufacturing. We're sharing one way to implement these ideas with concrete math and guidance.
 
 ### Comparison with existing tools
 
@@ -326,54 +266,117 @@ $A_i(t)$, $T_i(t)$, and $C(t)$.
 | High-cardinality observability   | Stores rich, high-cardinality events and fields            | Ad-hoc "show me all requests where…" queries   | Cost grows with cardinality and usage        |
 | This **Journey Metrics** model       | Aggregate request counters per step and time window        | Cheap, simple flow SLIs and SLOs               | Less flexible for arbitrary ad-hoc questions |
 
-#### Real User Monitoring (RUM) / Funnels
-**Tools**: Grafana Faro, Datadog RUM, Google Analytics, Amplitude, Mixpanel
+**When to use what:**
+- **RUM/Funnels**: Product analytics, user segmentation
+- **Synthetic monitoring**: Smoke tests, uptime checks
+- **APM/Tracing**: Debugging specific failures
+- **High-cardinality**: Exploratory analysis
+- **Journey Metrics**: Cheap flow SLOs and alerts
 
-- **How they work**: Track individual user sessions with client-side instrumentation. Build funnels by querying event streams per user.
-- **Strengths**: Rich path analysis, segmentation, "what happened to user X?"
-- **Weaknesses**: Expensive at scale (per-user events), requires user identity, hard to use directly in SLOs.
-- **When to use**: Product analytics, A/B testing with deep segmentation.
-- **This Journey Metrics model**: Can be cheaper (aggregate counters), needs no user tracking, and is aimed at operational SLOs and alerts. It is not a replacement for product analytics funnels.
+Not reinventing anything—just tying together journey SLIs, SPC, and standard metrics backends.
 
-#### Synthetic Monitoring
-**Tools**: Datadog Synthetics, Pingdom, Checkly
+---
 
-- **How they work**: Bots run scripted user journeys; alert if they fail.
-- **Strengths**: Proactive (catches issues before users), consistent baseline.
-- **Weaknesses**: Fake traffic (not real users), limited coverage, can't detect load-dependent issues.
-- **When to use**: Smoke tests, monitoring from multiple regions, testing third-party dependencies.
-- **This Journey Metrics model**: Monitors real user traffic flows and can complement synthetic checks, especially for load-dependent issues.
+## Real-world example: OAuth2 Device Code Flow
 
-#### APM / Distributed Tracing
-**Tools**: Datadog APM, Honeycomb, Lightstep, Jaeger
+Let's apply this to a concrete authentication scenario: OAuth2 device authorization for smart TVs, CLI tools, and IoT devices.
 
-- **How they work**: Trace individual requests across services; reconstruct full journey per request.
-- **Strengths**: Deep per-request visibility, great for debugging specific failures.
-- **Weaknesses**: Expensive (high cardinality), requires sampling at scale, complex queries for aggregate patterns.
-- **When to use**: Incident investigation ("why did this specific request fail?").
-- **This Journey Metrics model**: Uses aggregate metrics that can be cheaper at scale and are intended for SLOs and alerting alongside tracing.
+### The flow
 
-#### High-cardinality observability
-**Tools**: Honeycomb, Lightstep, Elastic Observability
+**Step 1**: Device requests device code  
+→ `POST /device_authorization` returns `device_code` and `user_code`
 
-- **How they work**: Store high-cardinality events; slice by arbitrary dimensions.
-- **Strengths**: Extreme flexibility ("show me all requests where..." queries).
-- **Weaknesses**: Cost scales with cardinality and query complexity; need to know what to ask.
-- **When to use**: Exploratory analysis, ad-hoc investigation of unknown unknowns.
-- **This Journey Metrics model**: Uses fixed, low-cardinality metrics ($\approx$10-20 flow values) that are often cheaper, but support only pre-defined questions. It is best suited to regular flow health checks, not open-ended exploration.
+**Step 2**: User visits verification URL  
+→ User opens browser, navigates to the `verification_uri`
 
-### Closest existing implementation
+**Step 3**: User enters code and authorizes  
+→ User types the `user_code`, reviews permissions, grants access
 
-**Google's internal SRE tools**: Public material describes Google using journey-based SLIs and flow-style metrics internally. This approach is inspired by that style (flow-based SLIs with SPC), but their tools are proprietary and not documented.
+**Step 4**: Device polling succeeds  
+→ Device polls `POST /token` and receives valid tokens
 
-### Are we reinventing the wheel?
+**Success**: Device has working access token
 
-Not really—the pieces already exist:
-- Journey-based SLIs from the SRE world
-- SPC and control charts from manufacturing and quality work
-- Metrics backends like Prometheus, Datadog, and OpenTelemetry
+### Metrics for a 5-minute window
 
-What we're hoping to do is share one way we've tied those ideas together. We'd love feedback on whether this resonates with your experience, and we expect teams will want to adapt and tweak this to fit their specific context.
+For each window $t$, we count **requests** at each step:
+- $A_1(t)$: number of `POST /device_authorization` requests
+- $A_2(t)$: number of verification page GET requests (HTTP 200)
+- $A_3(t)$: number of successful authorization POST requests (consent granted)
+- $A_4(t)$: number of `POST /token` requests that return valid tokens (HTTP 200 with token)
+- $A_5(t)$: number of requests to protected resources that succeed with these tokens
+
+Transitions:
+- $T_1(t) = A_2(t)/A_1(t)$ — fraction of device auth requests followed by verification page loads in the same window
+- $T_2(t) = A_3(t)/A_2(t)$ — fraction of verification page requests followed by successful authorization
+- $T_3(t) = A_4(t)/A_3(t)$ — fraction of authorization grants followed by successful token retrieval
+- $T_4(t) = A_5(t)/A_4(t)$ — fraction of token requests followed by successful API calls
+
+End-to-end conversion:
+$$C(t) = \frac{A_5(t)}{A_1(t)} = T_1(t) \cdot T_2(t) \cdot T_3(t) \cdot T_4(t)$$
+
+Notes:
+- We count **requests**, not unique users or devices
+- A single user who retries generates multiple device auth requests
+- This measures "what fraction of requests successfully progress," including retries
+- Not a per-user completion rate over unbounded time
+
+### Typical healthy values
+
+- $T_1 \approx 0.95$ (most device auth requests lead to verification page loads)
+- $T_2 \approx 0.85$ (some verification page loads don't result in authorization completion)
+- $T_3 \approx 0.98$ (authorization grants reliably lead to token retrieval)
+- $T_4 \approx 0.99$ (tokens usually work for API calls)
+- Overall $C \approx 0.78$ (~78% of device auth requests result in successful API calls within the same window)
+
+### What this catches
+
+If $T_2$ drops from 0.85 to 0.70:
+- Per-endpoint monitoring shows all endpoints returning HTTP 200
+- But $C$ drops from $0.95 \times 0.85 \times 0.98 \times 0.99 = 0.78$ to $0.95 \times 0.70 \times 0.98 \times 0.99 = 0.64$ (64%)
+- This signals that fewer requests are completing the flow, even though each individual endpoint succeeds
+
+This catches issues like broken verification URLs, confusing UX, or timing problems that per-endpoint success rates miss.
+
+### Visualizations
+
+We show several scenarios to illustrate how different types of changes affect the flow metrics. All plots use **moving average control limits** (5-window rolling mean) to smooth jitter and provide tighter detection bounds.
+
+#### Scenario 0: Volume independence
+
+![OAuth2 - Volume independence](images/plot15_5.png)
+
+Traffic varies 20× (500→10k→500 req/window), yet $C(t)$ stays ~78%. Volume affects **noise**, not **signal**—this is why ratios work across scales.
+
+#### Scenario 1: User behavior change — T1 drops
+
+![OAuth2 - User behavior change](images/plot16.png)
+
+$T_1$ drops from 0.95 to 0.80 at window 20. Likely UX issue (broken link, confusing instructions).
+
+#### Scenario 2: System failure with seasonal traffic — T2 drops
+
+![OAuth2 - System failure with seasonal traffic](images/plot17.png)
+
+Daily traffic pattern with $T_2$ degradation at window 20. Control limits adapt to volume but still catch the failure.
+
+#### Scenario 3: Seasonal pattern — healthy flow
+
+![OAuth2 - Seasonal volume](images/plot18.png)
+
+Daily cycle, healthy throughout. Limits adapt automatically: wider at night, tighter at peak.
+
+#### Scenario 4: Polling failure — T3 drops
+
+![OAuth2 - Polling failure](images/plot19.png)
+
+$T_3$ drops from 0.98 to 0.85. Polling timeouts or rate limiting.
+
+#### Scenario 5: Token validation — T4 drops
+
+![OAuth2 - Token validation failure](images/plot20.png)
+
+$T_4$ drops from 0.99 to 0.90. Tokens issued but fail on API calls.
 
 ## Refresh visualizations
 

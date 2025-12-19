@@ -1,4 +1,5 @@
 import matplotlib.pyplot as plt
+import numpy as np
 import os
 import random
 import math
@@ -61,8 +62,14 @@ class FlowScenario:
 def plot1_arrivals(flow_a: FlowScenario, flow_b: FlowScenario, filename: str = "images/plot1.png") -> None:
 	"""Plot arrivals per step for the first scenario (flow_a)."""
 	arrivals_a = flow_a.arrivals
-	labels = [f"Step {i + 1}" for i in range(len(arrivals_a))]
-	plt.figure(figsize=(8, 5))
+	
+	# Use custom labels for OAuth2 if detected
+	if "OAuth2" in flow_a.name or "Device" in flow_a.name:
+		labels = ["Device\nAuth\nRequest", "Verification\nURL Visit", "Authorization\nGrant", "Token\nRetrieval", "Token\nValidation"]
+	else:
+		labels = [f"Step {i + 1}" for i in range(len(arrivals_a))]
+	
+	plt.figure(figsize=(10, 5))
 	bars = plt.bar(labels, arrivals_a, color="#2ca02c", alpha=0.8, edgecolor="black", linewidth=0.5)
 	# Add value labels on bars
 	for bar in bars:
@@ -70,7 +77,9 @@ def plot1_arrivals(flow_a: FlowScenario, flow_b: FlowScenario, filename: str = "
 		plt.text(bar.get_x() + bar.get_width()/2., height,
 				f'{int(height)}',
 				ha='center', va='bottom', fontsize=9)
-	plt.title(f"Healthy Flow: Per-Step Request Arrivals", fontsize=12, fontweight="bold")
+	
+	title = flow_a.name if "OAuth2" in flow_a.name else "Healthy Flow: Per-Step Request Arrivals"
+	plt.title(title, fontsize=12, fontweight="bold")
 	plt.ylabel("Number of requests", fontsize=11)
 	plt.xlabel("Flow step", fontsize=11)
 	plt.grid(axis="y", alpha=0.3)
@@ -82,8 +91,14 @@ def plot1_arrivals(flow_a: FlowScenario, flow_b: FlowScenario, filename: str = "
 def plot2_arrivals(flow_a: FlowScenario, flow_b: FlowScenario, filename: str = "images/plot2.png") -> None:
 	"""Plot arrivals per step for the second scenario (flow_b)."""
 	arrivals_b = flow_b.arrivals
-	labels = [f"Step {i + 1}" for i in range(len(arrivals_b))]
-	plt.figure(figsize=(8, 5))
+	
+	# Use custom labels for OAuth2 if detected
+	if "OAuth2" in flow_b.name or "Device" in flow_b.name:
+		labels = ["Device\nAuth\nRequest", "Verification\nURL Visit", "Authorization\nGrant", "Token\nRetrieval", "Token\nValidation"]
+	else:
+		labels = [f"Step {i + 1}" for i in range(len(arrivals_b))]
+	
+	plt.figure(figsize=(10, 5))
 	bars = plt.bar(labels, arrivals_b, color="#d62728", alpha=0.8, edgecolor="black", linewidth=0.5)
 	# Add value labels on bars
 	for bar in bars:
@@ -91,7 +106,9 @@ def plot2_arrivals(flow_a: FlowScenario, flow_b: FlowScenario, filename: str = "
 		plt.text(bar.get_x() + bar.get_width()/2., height,
 				f'{int(height)}',
 				ha='center', va='bottom', fontsize=9)
-	plt.title(f"Broken Flow: Step 2 Failure (T2=0.2)", fontsize=12, fontweight="bold")
+	
+	title = flow_b.name if "OAuth2" in flow_b.name else "Broken Flow: Step 2 Failure (T2=0.2)"
+	plt.title(title, fontsize=12, fontweight="bold")
 	plt.ylabel("Number of requests", fontsize=11)
 	plt.xlabel("Flow step", fontsize=11)
 	plt.grid(axis="y", alpha=0.3)
@@ -235,34 +252,94 @@ class SimulationScenario:
 		return series
 
 
+@dataclass
+class SeasonalSimulation:
+	"""Simulate C(t) with seasonal/diurnal volume patterns.
+	
+	Volume varies sinusoidally over the day (low at night, peak during business hours).
+	Useful for demonstrating how control limits adapt to realistic traffic patterns.
+	"""
+	name: str
+	base: FlowScenario
+	base_length: int
+	test: FlowScenario | None
+	test_length: int
+	min_volume: int  # Minimum A1 (night)
+	max_volume: int  # Maximum A1 (peak hours)
+	jitter: float = 0.05
+	
+	def simulate_C_series(self) -> List[float]:
+		"""Return C(t) series with seasonal volume variation.
+		
+		Volume follows: A1(t) = min + (max-min) * sin²(π*t/period)
+		This creates a realistic daily pattern: low → peak → low
+		Can optionally inject a flow change (test) partway through.
+		"""
+		series: List[float] = []
+		total_windows = self.base_length + self.test_length
+		period = total_windows  # One full cycle over all windows
+		
+		for idx in range(total_windows):
+			# Sinusoidal volume pattern (0 at start/end, peak at middle)
+			phase = math.pi * idx / period
+			volume_factor = math.sin(phase) ** 2
+			A1 = int(self.min_volume + (self.max_volume - self.min_volume) * volume_factor)
+			
+			# Choose flow (base or test)
+			flow = self.base if idx < self.base_length else (self.test or self.base)
+			
+			# Simulate flow with this volume
+			A_current = A1
+			A_initial = A_current
+			if A_initial <= 0:
+				series.append(float("nan"))
+				continue
+				
+			for T in flow.transitions:
+				low = max(0.0, T - self.jitter)
+				high = min(1.0, T + self.jitter)
+				p = random.uniform(low, high)
+				mean = A_current * p
+				var = A_current * p * (1.0 - p)
+				std = math.sqrt(var)
+				noise = random.gauss(0.0, std) if std > 0 else 0.0
+				A_next = int(round(mean + noise))
+				if A_next < 0:
+					A_next = 0
+				if A_next > A_current:
+					A_next = A_current
+				A_current = A_next
+				
+			C_t = A_current / A_initial if A_initial > 0 else float("nan")
+			series.append(C_t)
+		return series
+
+
 def compute_individuals_control_limits(series: List[float], stable_windows: int) -> Tuple[float, float, float] | None:
 	"""Compute mean and individuals-chart control limits from the stable prefix.
 
 	The first `stable_windows` points are treated as representing stable behavior.
 	Returns (mean, UCL, LCL), clamped to [0, 1], or None if not enough data.
 	"""
-	stable_C = series[:stable_windows]
+	stable_C = np.array(series[:stable_windows])
 	if len(stable_C) < 2:
 		return None
 
-	mean_C = sum(stable_C) / len(stable_C)
-	moving_ranges = [abs(stable_C[i] - stable_C[i - 1]) for i in range(1, len(stable_C))]
-	mr_bar = sum(moving_ranges) / len(moving_ranges)
+	mean_C = np.mean(stable_C)
+	moving_ranges = np.abs(np.diff(stable_C))
+	mr_bar = np.mean(moving_ranges)
 	k = 2.66  # SPC constant for individuals chart
-	ucl = mean_C + k * mr_bar
-	lcl = mean_C - k * mr_bar
-	# Clamp to [0, 1]
-	ucl = min(1.0, ucl)
-	lcl = max(0.0, lcl)
+	ucl = np.clip(mean_C + k * mr_bar, 0.0, 1.0)
+	lcl = np.clip(mean_C - k * mr_bar, 0.0, 1.0)
 	return mean_C, ucl, lcl
 
 def compute_moving_average(series: List[float], window: int) -> List[float]:
 	"""Compute simple moving average over a window."""
+	arr = np.array(series)
 	ma = []
-	for i in range(len(series)):
+	for i in range(len(arr)):
 		start = max(0, i - window + 1)
-		window_vals = series[start:i+1]
-		ma.append(sum(window_vals) / len(window_vals))
+		ma.append(np.mean(arr[start:i+1]))
 	return ma
 
 def plot_C_with_limits(
@@ -311,6 +388,7 @@ def plot_C_with_moving_average_limits(
 	ma_window: int,
 	filename: str = "images/plot15.png",
 	title: str | None = None,
+	highlight_test_phase: bool = False,
 ) -> None:
 	"""Plot C(t) with control limits computed from moving average.
 	
@@ -331,6 +409,10 @@ def plot_C_with_moving_average_limits(
 	
 	plt.figure(figsize=(10, 5))
 	
+	# Add shading for test phase first (so it's in background)
+	if highlight_test_phase and sim.test_length > 0:
+		plt.axvspan(sim.base_length + 0.5, len(windows) + 0.5, color="#ffcccc", alpha=0.3, label="Degradation injected")
+	
 	# Plot raw C(t) with transparency
 	plt.plot(windows, C_series, marker="o", markersize=3, color="#cccccc", 
 			 label="Raw C(t)", linewidth=1, alpha=0.5, linestyle="-")
@@ -348,6 +430,182 @@ def plot_C_with_moving_average_limits(
 	
 	plt.title(title or "C(t) with Moving Average Control Limits", fontsize=12, fontweight="bold")
 	plt.xlabel("Time window", fontsize=11)
+	plt.ylabel("Conversion Ratio C(t)", fontsize=11)
+	plt.ylim(0, 1)
+	plt.grid(axis="y", alpha=0.3)
+	plt.legend(loc="best", fontsize=9)
+	plt.tight_layout()
+	plt.savefig(filename, dpi=150)
+	plt.close()
+
+
+def plot_seasonal_volume_and_C(
+	sim: SeasonalSimulation,
+	ma_window: int,
+	filename: str = "images/plot_seasonal.png",
+	title: str | None = None,
+) -> None:
+	"""Plot both volume A1(t) and C(t) to show C is volume-independent.
+	
+	Dual-axis plot: volume on left axis, C(t) on right axis.
+	Demonstrates that C(t) remains stable despite dramatic volume changes.
+	"""
+	# We need to re-simulate to capture volume at each step
+	total_windows = sim.base_length + sim.test_length
+	period = total_windows
+	
+	volume_series = []
+	C_series = []
+	
+	for idx in range(total_windows):
+		# Sinusoidal volume pattern
+		phase = math.pi * idx / period
+		volume_factor = math.sin(phase) ** 2
+		A1 = int(sim.min_volume + (sim.max_volume - sim.min_volume) * volume_factor)
+		volume_series.append(A1)
+		
+		# Choose flow
+		flow = sim.base if idx < sim.base_length else (sim.test or sim.base)
+		
+		# Simulate C(t)
+		A_current = A1
+		A_initial = A_current
+		if A_initial <= 0:
+			C_series.append(float("nan"))
+			continue
+			
+		for T in flow.transitions:
+			low = max(0.0, T - sim.jitter)
+			high = min(1.0, T + sim.jitter)
+			p = random.uniform(low, high)
+			mean = A_current * p
+			var = A_current * p * (1.0 - p)
+			std = math.sqrt(var)
+			noise = random.gauss(0.0, std) if std > 0 else 0.0
+			A_next = int(round(mean + noise))
+			if A_next < 0:
+				A_next = 0
+			if A_next > A_current:
+				A_next = A_current
+			A_current = A_next
+			
+		C_t = A_current / A_initial if A_initial > 0 else float("nan")
+		C_series.append(C_t)
+	
+	windows = list(range(1, len(C_series) + 1))
+	
+	# Compute moving average of C(t)
+	ma_series = compute_moving_average(C_series, ma_window)
+	
+	# Create figure with dual y-axes
+	fig, ax1 = plt.subplots(figsize=(12, 6))
+	
+	# Plot volume on left axis
+	ax1.set_xlabel("Time window (5-min intervals)", fontsize=11)
+	ax1.set_ylabel("Volume: A1(t) requests/window", fontsize=11, color="#ff7f0e")
+	ax1.fill_between(windows, volume_series, alpha=0.3, color="#ff7f0e", label="Traffic volume")
+	ax1.plot(windows, volume_series, color="#ff7f0e", linewidth=2, alpha=0.8)
+	ax1.tick_params(axis='y', labelcolor="#ff7f0e")
+	ax1.set_ylim(0, max(volume_series) * 1.1)
+	
+	# Plot C(t) on right axis
+	ax2 = ax1.twinx()
+	ax2.set_ylabel("Conversion C(t)", fontsize=11, color="#1f77b4")
+	ax2.plot(windows, C_series, marker="o", markersize=3, color="#cccccc", 
+			 label="Raw C(t)", linewidth=1, alpha=0.5)
+	ax2.plot(windows, ma_series, marker="o", markersize=4, color="#1f77b4", 
+			 label=f"C(t) moving avg", linewidth=2.5, alpha=0.9)
+	ax2.tick_params(axis='y', labelcolor="#1f77b4")
+	ax2.set_ylim(0, 1)
+	ax2.grid(axis="y", alpha=0.3)
+	
+	# Add title and legends
+	plt.title(title or "Volume Changes, C(t) Stays Stable", fontsize=13, fontweight="bold", pad=20)
+	
+	# Combine legends
+	lines1, labels1 = ax1.get_legend_handles_labels()
+	lines2, labels2 = ax2.get_legend_handles_labels()
+	ax1.legend(lines1 + lines2, labels1 + labels2, loc="upper left", fontsize=9)
+	
+	fig.tight_layout()
+	plt.savefig(filename, dpi=150)
+	plt.close()
+
+
+def plot_seasonal_C_with_ma(
+	sim: SeasonalSimulation,
+	ma_window: int,
+	filename: str = "images/plot18.png",
+	title: str | None = None,
+	highlight_test_phase: bool = False,
+) -> None:
+	"""Plot C(t) for seasonal volume pattern with moving average control limits.
+	
+	Shows how control limits naturally widen/narrow as traffic volume changes
+	throughout the day, demonstrating adaptive monitoring behavior.
+	"""
+	C_series = sim.simulate_C_series()
+	windows = list(range(1, len(C_series) + 1))
+	
+	# Compute moving average
+	ma_series = compute_moving_average(C_series, ma_window)
+	
+	# For seasonal data, compute rolling control limits (window-by-window)
+	# Use a sliding window to compute limits that adapt to volume changes
+	ucl_series = []
+	lcl_series = []
+	mean_series = []
+	
+	ma_array = np.array(ma_series)
+	
+	for i in range(len(ma_series)):
+		# Use past 10 windows (or available) to compute current limits
+		lookback = min(10, i + 1)
+		window_data = ma_array[max(0, i - lookback + 1):i + 1]
+		
+		if len(window_data) >= 3:
+			mean_val = np.mean(window_data)
+			mr = np.abs(np.diff(window_data))
+			if len(mr) > 0:
+				mr_bar = np.mean(mr)
+				sigma = mr_bar / 1.128
+				ucl_val = np.clip(mean_val + 2.66 * sigma, 0.0, 1.0)
+				lcl_val = np.clip(mean_val - 2.66 * sigma, 0.0, 1.0)
+			else:
+				ucl_val = mean_val
+				lcl_val = mean_val
+		else:
+			mean_val = ma_series[i] if i < len(ma_series) else np.nan
+			ucl_val = mean_val
+			lcl_val = mean_val
+			
+		mean_series.append(mean_val)
+		ucl_series.append(ucl_val)
+		lcl_series.append(lcl_val)
+	
+	plt.figure(figsize=(10, 5))
+	
+	# Add shading for test phase first (so it's in background)
+	if highlight_test_phase and sim.test_length > 0:
+		plt.axvspan(sim.base_length + 0.5, len(windows) + 0.5, color="#ffcccc", alpha=0.3, label="Degradation injected")
+	
+	# Plot raw C(t) with transparency
+	plt.plot(windows, C_series, marker="o", markersize=3, color="#cccccc", 
+			 label="Raw C(t)", linewidth=1, alpha=0.5, linestyle="-")
+	
+	# Plot moving average
+	plt.plot(windows, ma_series, marker="o", markersize=4, color="#1f77b4", 
+			 label=f"Moving avg (window={ma_window})", linewidth=2, alpha=0.9)
+	
+	# Plot adaptive control limits
+	plt.plot(windows, ucl_series, color="#666666", linestyle="dotted", 
+			 label="Adaptive control limits", linewidth=1.5, alpha=0.7)
+	plt.plot(windows, lcl_series, color="#666666", linestyle="dotted", linewidth=1.5, alpha=0.7)
+	plt.plot(windows, mean_series, color="#1f77b4", linestyle="dashed", 
+			 label="Rolling mean", linewidth=2, alpha=0.5)
+	
+	plt.title(title or "C(t) with Seasonal Volume Pattern", fontsize=12, fontweight="bold")
+	plt.xlabel("Time window (5-min intervals)", fontsize=11)
 	plt.ylabel("Conversion Ratio C(t)", fontsize=11)
 	plt.ylim(0, 1)
 	plt.grid(axis="y", alpha=0.3)
@@ -397,7 +655,9 @@ def simulate_windowed_T(num_users_per_minute: int, num_minutes: int, p_success: 
 	T_series = []
 	for m in range(num_minutes):
 		if A1[m] > 0:
-			T_series.append(A2[m] / A1[m])
+			# Cap at 1.0 since A2 can exceed A1 due to timing effects
+			# (users from previous windows completing in this window)
+			T_series.append(min(1.0, A2[m] / A1[m]))
 		else:
 			T_series.append(float("nan"))
 
@@ -618,4 +878,144 @@ if __name__ == "__main__":
 		ma_window=5,
 		filename="images/plot15.png",
 		title="C(t) with Moving Average Control Limits - solves jitter problem",
+	)
+	
+	# OAuth2 Device Flow Examples - Multiple scenarios with moving average limits
+	
+	# Baseline healthy flow
+	oauth_healthy = FlowScenario(
+		name="OAuth2 Healthy",
+		A1=10_000,
+		transitions=[0.95, 0.85, 0.98, 0.99],
+		max_retries=0,
+	)
+	
+	# Plot 15.5: Scenario 0 - Volume independence (dual-axis plot)
+	sim_oauth_seasonal_demo = SeasonalSimulation(
+		name="OAuth2 Seasonal Demo",
+		base=oauth_healthy,
+		base_length=40,
+		test=None,
+		test_length=0,
+		min_volume=500,
+		max_volume=10_000,
+		jitter=0.02,
+	)
+	plot_seasonal_volume_and_C(
+		sim_oauth_seasonal_demo,
+		ma_window=5,
+		filename="images/plot15_5.png",
+		title="OAuth2: Volume changes 20×, C(t) remains stable",
+	)
+	
+	# Plot 16: User behavior change - T1 drops (verification URL)
+	oauth_t1_drop = FlowScenario(
+		name="OAuth2 T1 Drop",
+		A1=10_000,
+		transitions=[0.80, 0.85, 0.98, 0.99],
+		max_retries=0,
+	)
+	sim_oauth_t1 = SimulationScenario(
+		name="OAuth2 T1 Drop",
+		base=oauth_healthy,
+		base_length=20,
+		test=oauth_t1_drop,
+		test_length=20,
+		jitter=0.02,
+	)
+	plot_C_with_moving_average_limits(
+		sim_oauth_t1,
+		ma_window=5,
+		filename="images/plot16.png",
+		title="OAuth2: User behavior change (T1: 0.95→0.80)",
+		highlight_test_phase=True,
+	)
+	
+	# Plot 17: System behavior change with seasonal volume - T2 drops (authorization)
+	oauth_t2_drop = FlowScenario(
+		name="OAuth2 T2 Drop",
+		A1=10_000,
+		transitions=[0.95, 0.70, 0.98, 0.99],
+		max_retries=0,
+	)
+	sim_oauth_t2_seasonal = SeasonalSimulation(
+		name="OAuth2 T2 Drop Seasonal",
+		base=oauth_healthy,
+		base_length=20,
+		test=oauth_t2_drop,
+		test_length=20,
+		min_volume=500,    # Night traffic
+		max_volume=10_000, # Peak daytime traffic
+		jitter=0.02,
+	)
+	plot_seasonal_C_with_ma(
+		sim_oauth_t2_seasonal,
+		ma_window=5,
+		filename="images/plot17.png",
+		title="OAuth2: System failure with seasonal traffic (T2: 0.85→0.70)",
+		highlight_test_phase=True,
+	)
+	
+	# Plot 18: Seasonal volume pattern only (no failure)
+	sim_oauth_seasonal = SeasonalSimulation(
+		name="OAuth2 Seasonal",
+		base=oauth_healthy,
+		base_length=40,
+		test=None,
+		test_length=0,
+		min_volume=500,    # Night traffic
+		max_volume=10_000, # Peak daytime traffic
+		jitter=0.02,
+	)
+	plot_seasonal_C_with_ma(
+		sim_oauth_seasonal,
+		ma_window=5,
+		filename="images/plot18.png",
+		title="OAuth2: Seasonal volume pattern (daily cycle)",
+	)
+	
+	# Plot 19: Polling infrastructure failure - T3 drops
+	oauth_t3_drop = FlowScenario(
+		name="OAuth2 T3 Drop",
+		A1=10_000,
+		transitions=[0.95, 0.85, 0.85, 0.99],
+		max_retries=0,
+	)
+	sim_oauth_t3 = SimulationScenario(
+		name="OAuth2 T3 Drop",
+		base=oauth_healthy,
+		base_length=20,
+		test=oauth_t3_drop,
+		test_length=20,
+		jitter=0.02,
+	)
+	plot_C_with_moving_average_limits(
+		sim_oauth_t3,
+		ma_window=5,
+		filename="images/plot19.png",
+		title="OAuth2: Polling infrastructure failure (T3: 0.98→0.85)",
+		highlight_test_phase=True,
+	)
+	
+	# Plot 20: Token validation issues - T4 drops
+	oauth_t4_drop = FlowScenario(
+		name="OAuth2 T4 Drop",
+		A1=10_000,
+		transitions=[0.95, 0.85, 0.98, 0.90],
+		max_retries=0,
+	)
+	sim_oauth_t4 = SimulationScenario(
+		name="OAuth2 T4 Drop",
+		base=oauth_healthy,
+		base_length=20,
+		test=oauth_t4_drop,
+		test_length=20,
+		jitter=0.02,
+	)
+	plot_C_with_moving_average_limits(
+		sim_oauth_t4,
+		ma_window=5,
+		filename="images/plot20.png",
+		title="OAuth2: Token validation issues (T4: 0.99→0.90)",
+		highlight_test_phase=True,
 	)
