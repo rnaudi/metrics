@@ -401,7 +401,7 @@ $A_i(t)$, $T_i(t)$, and $C(t)$.
 - If the mix is **stable**, its effect is baked into your baseline and limits.
 - When abuse/bot traffic surges, you often see $A_1(t)$ spike and transitions drop.
 
-**Other applications of this method**
+## Other applications of this method
 
 - **API rate limiting and retry policies** — Track end-to-end success including retries; detect when rate limits are too aggressive or retries mask degradation
 - **Payment processing flows (revenue impact example)** — Measure checkout-to-settlement conversion; catch revenue leaks where per-endpoint metrics show success but customers don't complete payment
