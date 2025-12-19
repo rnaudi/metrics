@@ -200,16 +200,48 @@ Immediately obvious. Every post-failure window would trigger.
 
 ### Part 5: Window sizing
 
-Common mistake: windows too small.
+The most common mistake is picking windows that are too small for your flow.
 
-#### 5.1 Good vs. bad window choices
+#### Why window size matters
+
+Imagine a 4-step login flow where each step takes ~30 seconds:
+- **5-minute window**: Most users complete all steps within one window. When you count requests, Step 1 and Step 4 have similar volumes because they're from the same group of users.
+- **30-second window**: A user who starts in window 1 finishes in window 3. Step 1 gets requests from this user, but Step 4 doesn't. You're comparing different groups of users—ratios become meaningless.
+
+#### 5.1 How to tell if your window is wrong
 
 ![Per-step request volume in a single window](images/plot13.png)
 
-- **Good (green)**: Similar volume at each step—journeys fit in one window
-- **Bad (red)**: Volumes vary 1000×—window too small, journeys split across windows
+Look at one window and count requests at each step:
 
-**Fix**: Increase window size until volumes are within 2-3× of each other.
+**Good window (green bars)**: 
+- Step 1: 1000 requests
+- Step 2: 900 requests  
+- Step 3: 810 requests
+- Step 4: 729 requests
+
+Each step sees similar volume (declining gradually due to drop-offs). This means most user journeys fit within one window—requests are properly aligned.
+
+**Bad window (red bars)**:
+- Step 1: 1000 requests
+- Step 2: 10,000 requests
+- Step 3: 100 requests  
+- Step 4: 500,000 requests
+
+Volumes vary wildly (1000× differences). This screams "window too small"—you're counting requests from completely different user cohorts at each step.
+
+#### How to choose window size
+
+**Rule of thumb**: Make window size 5-10× the typical time between steps.
+
+Examples:
+- Steps complete in ~10 seconds each → use 1-2 minute windows
+- Steps complete in ~1 minute each → use 5-10 minute windows  
+- Steps complete in ~5 minutes each → use 30-60 minute windows
+
+**How to validate**: Graph $A_1(t), A_2(t), A_3(t)...$ for a single window. If they're within 2-3× of each other (accounting for drop-offs), you're good. If they vary 10×-1000×, increase window size.
+
+**For flows with variable timing** (email verification that takes hours): This approach won't work well. Use event-based funnels instead.
 
 ---
 
