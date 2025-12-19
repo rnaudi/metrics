@@ -69,22 +69,6 @@ See [src/metrics_demo.py](src/metrics_demo.py) for code that generates the examp
 
 ---
 
-## Beyond strictly linear auth flows
-
-The examples above use a simple linear chain of steps (1 → 2 → 3 → 4 → Success).
-Real authentication systems often have optional steps, retries, and branches (for example, different MFA methods).
-
-This **Journey Metrics** model still applies within the login/auth domain: you can define multiple flows or subflows, or group
-several controllers into a single logical step. As long as you can
-count arrivals $A_i(t)$ and transitions $T_i(t)$ for the auth paths you care about,
-you can build dashboards for your authentication journeys on top of the same
-metric-based foundation.
-
-Because this is based on metrics and tags, flows can naturally span multiple
-services and components. Different services (frontend, API gateway,
-backend) can all emit metrics with the same `flow` tag; the metrics backend
-puts them together into a single end-to-end auth view.
-
 ## Visualizations
 
 The demo script uses a simple scenario with:
