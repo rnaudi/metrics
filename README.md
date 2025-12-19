@@ -32,12 +32,13 @@ We work with time windows (for example, 1, 5, or 15 minutes). For each window $t
 - **Transition ratio** $T_i(t)$: fraction of requests that move from step $i$ to step $i+1$:
   $$T_i(t) = \frac{A_{i+1}(t)}{A_i(t)}.$$
 - **Terminal Success**: last step with a clear success condition (for example final HTTP 2xx). We denote its index as step $S$.
-- **Conversion** $C(t)$: fraction of requests that started in step 1 and ended in Success (step $S$):
+- **Conversion** $C(t)$: ratio of requests in window $t$ that reached Success (step $S$) to requests that entered step 1 in the same window:
   $$C(t) = \frac{A_{S}(t)}{A_1(t)} = \prod_{i=1}^{S-1} T_i(t).$$
 
 Notes:
 - We count **requests**, not unique users; retries are part of the signal.
 - Ratios $T_i(t)$ and $C(t)$ are volume-agnostic, but their **noise** shrinks with more traffic.
+- This is a request-level signal (including retries), not a per-user funnel metric.
 
 **Assumptions (briefly)**
 - Flows are sequential along the path you are modeling (for example controller chain `/login -> /otp -> /success`).
