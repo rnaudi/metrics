@@ -232,16 +232,30 @@ Volumes vary wildly (1000× differences). This screams "window too small"—you'
 
 #### How to choose window size
 
-**Rule of thumb**: Make window size 5-10× the typical time between steps.
+**Goal**: Pick a window large enough that most users complete the entire flow within one window.
 
-Examples:
-- Steps complete in ~10 seconds each → use 1-2 minute windows
-- Steps complete in ~1 minute each → use 5-10 minute windows  
-- Steps complete in ~5 minutes each → use 30-60 minute windows
+**Rule of thumb**: Look at the **longest typical gap between consecutive steps**, then make the window 5-10× that duration.
+
+**Example: OAuth2 Device Flow**
+
+Your flow has a 10-minute session timeout, meaning users typically complete it in <10 minutes total. Break it down by step:
+- Step 1→2: User opens browser after seeing device code (1-3 minutes typically)
+- Step 2→3: User types code and authorizes (30 seconds)
+- Step 3→4: Device polls and gets token (a few seconds)
+- Step 4→5: Device uses token for API call (seconds)
+
+The longest gap is Step 1→2 (let's say p95 is 3 minutes). Using the 5-10× rule:
+- **5-minute window**: Should capture most flows (5 min > 3 min longest gap). Good choice.
+- **10-minute window**: More conservative, captures even slower users. Also fine.
+- **1-minute window**: Too small—many users won't reach Step 2 in the same window.
+
+**Quick check**: 
+- If 90% of users complete the flow in 5 minutes, use a 5-minute window
+- If you have a 10-minute timeout and most flows finish before timeout, a 10-minute window is safe
 
 **How to validate**: Graph $A_1(t), A_2(t), A_3(t)...$ for a single window. If they're within 2-3× of each other (accounting for drop-offs), you're good. If they vary 10×-1000×, increase window size.
 
-**For flows with variable timing** (email verification that takes hours): This approach won't work well. Use event-based funnels instead.
+**For flows with long/variable timing** (email verification over hours): This approach doesn't work. Use event-based funnels instead.
 
 ---
 
