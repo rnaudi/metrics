@@ -401,13 +401,15 @@ $A_i(t)$, $T_i(t)$, and $C(t)$.
 - If the mix is **stable**, its effect is baked into your baseline and limits.
 - When abuse/bot traffic surges, you often see $A_1(t)$ spike and transitions drop.
 
-**Experimentation and A/B testing**
+**Other applications of this method**
 
-- This approach works well for **flow-level A/B testing** at high volume: tag variants (`flow=login_v1` vs `flow=login_v2`) and compare $C(t)$ distributions.
-- **Sequential testing**: Run variant A for a week, then B, compare $C(t)$ distributions. Simple and effective for major changes.
-- **Coarse-grained allocation**: Route by datacenter/region, measure flow conversion differences. Useful for infrastructure changes.
-- **Safety monitoring**: Use this as a "kill switch" during experiments—if $C(t)$ drops >X%, stop the rollout immediately.
-- **Limitations**: Not suitable for sophisticated adaptive algorithms (multi-armed bandit, reinforcement learning) which need per-request decisions and fast feedback loops. For those, use event-based systems. Best for detecting 5-10%+ conversion differences at high volume.
+- **API rate limiting and retry policies** — Track end-to-end success including retries; detect when rate limits are too aggressive or retries mask degradation
+- **Payment processing flows (revenue impact example)** — Measure checkout-to-settlement conversion; catch revenue leaks where per-endpoint metrics show success but customers don't complete payment
+- **CI/CD pipelines (compound failure rates)** — Reveal actual deployment success rates; individual stages at 98% can yield only 90% end-to-end
+- **Data ingestion pipelines (silent failures)** — Detect when data arrives but doesn't fully propagate through validation, transformation, and caching
+- **Service mesh / distributed systems (cascading issues)** — Catch cross-service conversion drops that per-service SLIs miss due to cascading timeouts or retries
+- **Email delivery systems (spam filtering detection)** — Measure actual delivery rates beyond "accepted by SMTP"; detect ISP blocking and spam filtering
+- **Infrastructure provisioning (autoscaling bottlenecks)** — Track time-to-ready for new instances; debug slow provisioning that delays autoscaling response
 
 ## Existing approaches and alternatives
 
@@ -431,87 +433,6 @@ This builds on **Google SRE's journey-based SLIs** ([SRE Workbook](https://sre.g
 - **Journey Metrics**: Cheap flow SLOs and alerts
 
 Not reinventing anything—just tying together journey SLIs, SPC, and standard metrics backends.
-
-----
-
-## Other practical applications
-
-While this README focuses on authentication flows, the pattern applies to any sequential process where you can count requests at each stage.
-
-### API rate limiting and retry policies
-
-**The flow**: Request → Rate limit check → Service call → Retry (if needed) → Success
-
-- $A_1(t)$: incoming requests
-- $A_2(t)$: requests that pass rate limiting
-- $A_3(t)$: successful service calls (first attempt)
-- $A_4(t)$: successful after retries
-- **$C(t) = A_4(t)/A_1(t)$**: end-to-end success rate including retries
-
-**What it catches**: When $T_2$ drops (rate limits too aggressive), when $T_3$ drops (service degradation), when $T_4/T_3$ shows excessive retries masking problems.
-
-### Payment processing flows
-
-**The flow**: Checkout → Payment method validation → Authorization → Capture → Settlement confirmation
-
-- Track conversion from checkout to settlement
-- Detect issues like payment gateway failures, authorization drops, or settlement delays
-- **Use case**: Your per-endpoint metrics show 99.9% success, but $C(t)$ reveals only 92% of checkouts complete—you're losing 8% of revenue
-
-### CI/CD pipelines
-
-**The flow**: Commit → Build → Test → Security scan → Deploy → Health check
-
-- $C(t)$: fraction of commits that successfully deploy and pass health checks
-- Helps answer: "What's our actual deployment success rate?" not just "Did each stage succeed?"
-- **Use case**: Individual stages have 98% success rates, but $C(t) = 0.98^5 = 0.90$—only 90% of commits make it to production
-
-### Data ingestion pipelines
-
-**The flow**: S3 upload → Validation → Transformation → Database write → Index update → Cache refresh
-
-- Track data freshness and completeness
-- Detect silent failures where data arrives but doesn't fully propagate
-- **Use case**: Your ETL job reports success, but dashboards show stale data—$C(t)$ drops reveal that cache refresh is failing
-
-### Service mesh / distributed systems
-
-**The flow**: Gateway → Auth service → Business logic → Database → External API → Response
-
-- Monitor end-to-end request success across service boundaries
-- Complements per-service SLIs with journey-level visibility
-- **Use case**: All services report >99% availability, but cross-service conversion $C(t)$ is only 95%—cascading timeouts or retries are eating your margins
-
-### Email delivery and notification systems
-
-**The flow**: Triggered event → Queue → Send API call → Accepted by provider → Delivered → Opened/clicked
-
-- Track actual delivery rates, not just "accepted by SMTP"
-- Detect ISP blocking, spam filter issues, or template rendering problems
-- **Use case**: SendGrid reports 100% acceptance but $C(t)$ shows only 70% delivery—you're being silently spam-filtered
-
-### Infrastructure provisioning
-
-**The flow**: Provision request → Resource allocation → OS install → Configuration → Health check → DNS registration
-
-- Track time-to-ready for new instances
-- Detect provisioning bottlenecks or flaky automation
-- **Use case**: Autoscaling triggers but new instances take 20 minutes instead of 5—$C(t)$ helps measure and debug the full provisioning journey
-
-### Key characteristics for this pattern
-
-**Works well when**:
-- Sequential or mostly-sequential steps
-- Can count requests/items at each stage
-- Steps complete within reasonable time windows (minutes to hours)
-- Need cheap, low-cardinality metrics for SLOs
-- Want to detect "silent" failures where individual stages succeed but end-to-end fails
-
-**Doesn't work when**:
-- Highly branching, parallel, or graph-like flows (use event-based systems)
-- Steps take days/weeks with high variance (use completion tracking, not windows)
-- Need per-user/per-session attribution (use RUM/funnels)
-- Flow is trivial (2 steps, both synchronous—just use regular request metrics)
 
 ----
 
