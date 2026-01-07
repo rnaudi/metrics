@@ -1,6 +1,6 @@
 # SRE Math: Practical Threshold Setting Guide
 
-> How to set correct thresholds for alerts using real data and statistics. Examples based on a 100 req/s HTTP service.
+> How to set correct thresholds for alerts using real data and statistics. Examples based on an authentication service handling 200 req/s.
 
 ## Validation Checklist
 
@@ -24,10 +24,10 @@
 
 ## Example Service
 
-**Payment API**: HTTP REST service
-- **Normal traffic**: 100 req/s (8.6M requests/day)
-- **Stack**: 4 hosts, load balanced
-- **Dependencies**: PostgreSQL, Redis cache, external payment gateway
+**Auth Service**: HTTP REST service handling authentication and authorization
+- **Normal traffic**: 200 req/s (17.3M requests/day)
+- **Stack**: 6 hosts, load balanced
+- **Dependencies**: PostgreSQL (user store), Redis (session cache), external SSO providers (SAML/OAuth)
 - **User base**: Multi-tenant SaaS (mix of free/pro/enterprise)
 
 **Goal**: Set thresholds that catch real problems without false positives.
@@ -69,47 +69,47 @@ Based on metric type and characteristics:
 
 #### Baseline Data (1 week)
 ```
-Monday-Friday peak hours (9am-5pm): 150-180 req/s
-Monday-Friday off-hours: 40-60 req/s
-Weekend: 20-30 req/s
-Overall mean: 100 req/s
-Overall stddev: 45 req/s
+Monday-Friday peak hours (9am-5pm): 280-320 req/s
+Monday-Friday off-hours: 80-120 req/s
+Weekend: 40-60 req/s
+Overall mean: 200 req/s
+Overall stddev: 85 req/s
 ```
 
 #### Analysis
 Traffic has strong daily/weekly patterns. Using simple mean + 3σ would give:
 ```
-threshold = 100 + (3 × 45) = 235 req/s
+threshold = 200 + (3 × 85) = 455 req/s
 ```
 
-But this misses context - 30 req/s is normal on Sunday, catastrophic on Tuesday at 2pm.
+But this misses context - 50 req/s is normal on Sunday, catastrophic on Tuesday at 2pm.
 
 #### Better Approach: Time-of-Week Baseline
 Calculate mean and σ for each hour-of-week bucket:
 ```
-Tuesday 2pm: μ = 165, σ = 15
-Sunday 2pm: μ = 25, σ = 8
+Tuesday 2pm: μ = 300, σ = 25
+Sunday 2pm: μ = 50, σ = 12
 ```
 
 #### Threshold Formula
 ```
 threshold(hour, day) = μ(hour, day) + 3σ(hour, day)
 
-Tuesday 2pm: 165 + (3 × 15) = 210 req/s
-Sunday 2pm: 25 + (3 × 8) = 49 req/s
+Tuesday 2pm: 300 + (3 × 25) = 375 req/s
+Sunday 2pm: 50 + (3 × 12) = 86 req/s
 ```
 
 #### Alert Rule
 ```yaml
 # Low traffic alert (potential outage)
-alert: PaymentAPITrafficDropped
+alert: AuthServiceTrafficDropped
 condition: rate < μ(current_time) - 3σ(current_time)
 duration: 5 minutes
 severity: critical
 
 # Example: Tuesday 2pm
-# μ - 3σ = 165 - 45 = 120 req/s
-# Alert if rate < 120 for 5+ minutes
+# μ - 3σ = 300 - 75 = 225 req/s
+# Alert if rate < 225 for 5+ minutes
 ```
 
 **Why this works**: 
@@ -123,18 +123,18 @@ severity: critical
 
 #### Baseline Data (1 week)
 ```
-Total requests: 60,480,000
-Total errors (5xx): 12,096
-Overall error rate: 0.02% (12,096 / 60,480,000)
+Total requests: 120,960,000
+Total errors (5xx): 24,192
+Overall error rate: 0.02% (24,192 / 120,960,000)
 ```
 
 Hourly breakdown:
 ```
 Mean error rate: 0.02%
-Stddev: 0.01%
-p95: 0.035%
-p99: 0.045%
-Max: 0.08%
+Stddev: 0.008%
+p95: 0.032%
+p99: 0.042%
+Max: 0.075%
 ```
 
 #### Analysis
@@ -146,53 +146,53 @@ Error rate is a proportion. Need to consider:
 #### Threshold Setting
 
 **Method 1: SLO-Based**
-If you have a 99.9% availability SLO:
+If you have a 99.95% availability SLO (stricter for auth):
 ```
-error_budget = 1 - 0.999 = 0.1%
+error_budget = 1 - 0.9995 = 0.05%
 
-threshold = error_budget = 0.1%
+threshold = error_budget = 0.05%
 ```
 
-Alert when error rate > 0.1% for 5+ minutes.
+Alert when error rate > 0.05% for 5+ minutes.
 
 **Method 2: Statistical (Baseline + Margin)**
 ```
 threshold = p99 + margin
-threshold = 0.045% + 0.005% = 0.05%
+threshold = 0.042% + 0.008% = 0.05%
 ```
 
 **Method 3: Multi-Window Burn Rate** (RECOMMENDED)
 ```
 # Fast burn: 1-hour window
-if error_rate_1h > 0.1% AND error_rate_6h > 0.05%:
+if error_rate_1h > 0.05% AND error_rate_6h > 0.03%:
     ALERT
 
 # This means:
-# - Short-term error rate 5x normal (0.02% → 0.1%)
+# - Short-term error rate 2.5x normal (0.02% → 0.05%)
 # - Sustained over 6 hours
 # - Reduces false positives from transient spikes
 ```
 
 #### Alert Rule
 ```yaml
-alert: PaymentAPIErrorRateHigh
+alert: AuthServiceErrorRateHigh
 condition: |
-  error_rate_1h > 0.1% AND 
-  error_rate_6h > 0.05% AND
-  requests_1h > 6000  # 100 req/min minimum
+  error_rate_1h > 0.05% AND 
+  error_rate_6h > 0.03% AND
+  requests_1h > 12000  # 200 req/min minimum
 duration: 0  # Already using windows
 severity: critical
 ```
 
 **Sample size check**:
 ```
-At 100 req/s:
-- 1-hour window: 360,000 requests
-- 0.1% error rate: 360 errors expected
-- Confidence interval: ±0.001% (very tight)
+At 200 req/s:
+- 1-hour window: 720,000 requests
+- 0.05% error rate: 360 errors expected
+- Confidence interval: ±0.0005% (very tight)
 ```
 
-With 360k samples, we can reliably detect 0.1% vs 0.02%.
+With 720k samples, we can reliably detect 0.05% vs 0.02%.
 
 ---
 
@@ -250,13 +250,13 @@ if p99_latency_5min > 1000ms:
 #### Alert Rules
 ```yaml
 # SLO breach
-alert: PaymentAPILatencyP95High
+alert: AuthServiceLatencyP95High
 condition: p95(http_request_duration_seconds) > 0.2
 duration: 10 minutes
 severity: warning
 
 # Severe degradation
-alert: PaymentAPILatencyP99Critical
+alert: AuthServiceLatencyP99Critical
 condition: p99(http_request_duration_seconds) > 1.0
 duration: 5 minutes
 severity: critical
@@ -312,19 +312,19 @@ At 81%, service is already degraded. We need to alert earlier.
 #### Alert Rules
 ```yaml
 # Warning: sustained high CPU
-alert: PaymentAPIHostCPUHigh
+alert: AuthServiceHostCPUHigh
 condition: avg(cpu_percent) > 70
 duration: 15 minutes
 severity: warning
 
 # Critical: CPU saturation
-alert: PaymentAPIHostCPUSaturated
+alert: AuthServiceHostCPUSaturated
 condition: avg(cpu_percent) > 80
 duration: 5 minutes
 severity: critical
 
 # Forecast: will hit 80% in next hour
-alert: PaymentAPIHostCPUTrending
+alert: AuthServiceHostCPUTrending
 condition: forecast(cpu_percent, 1h) > 80
 severity: warning
 ```
@@ -375,7 +375,7 @@ Critical: p99 GC pause > 500ms
 #### Alert Rules
 ```yaml
 # High heap usage
-alert: PaymentAPIMemoryHigh
+alert: AuthServiceMemoryHigh
 condition: |
   (heap_used / heap_max) > 0.75 AND
   rate(gc_pause_seconds) > 10/min
@@ -383,7 +383,7 @@ duration: 10 minutes
 severity: warning
 
 # Memory saturation
-alert: PaymentAPIMemorySaturated
+alert: AuthServiceMemorySaturated
 condition: |
   (heap_used / heap_max) > 0.85 OR
   p99(gc_pause_seconds) > 0.5
@@ -408,13 +408,13 @@ For rare events, use absolute counts:
 
 ```yaml
 # Disk errors (should be zero)
-alert: PaymentAPIHostDiskErrors
+alert: AuthServiceHostDiskErrors
 condition: disk_read_errors > 0
 duration: 0
 severity: critical
 
 # Network errors (expect some background noise)
-alert: PaymentAPIHostNetworkErrors
+alert: AuthServiceHostNetworkErrors
 condition: rate(network_errors) > 10/min
 duration: 5 minutes
 severity: warning
@@ -443,7 +443,7 @@ Baseline: Mean 25%, stddev 8%, p95 38%, p99 45%
 
 **Threshold**:
 ```yaml
-alert: PaymentAPIHostDiskSaturated
+alert: AuthServiceHostDiskSaturated
 condition: disk_io_util_percent > 60
 duration: 10 minutes
 severity: warning
@@ -455,22 +455,22 @@ Not using μ + 3σ (25 + 24 = 49%) because performance degrades at 60%.
 
 ### Layer 2: API Metrics (Per-Endpoint)
 
-#### Example: Checkout Endpoint Error Rate
+#### Example: Login Endpoint Error Rate
 
-Checkout is critical, has different baseline than overall API:
+Login is critical, has different baseline than overall API:
 ```
 Baseline:
-- /api/checkout: 0.01% error rate (stricter than overall 0.02%)
-- Traffic: 15 req/s (15% of total)
-- Revenue impact: $500/error
+- /api/login: 0.01% error rate (stricter than overall 0.02%)
+- Traffic: 60 req/s (30% of total)
+- User impact: Blocks access entirely
 ```
 
 **Threshold**: Tighter than overall API
 ```yaml
-alert: PaymentAPICheckoutErrors
+alert: AuthServiceLoginErrors
 condition: |
-  error_rate{endpoint="/api/checkout"} > 0.05% AND
-  requests{endpoint="/api/checkout"} > 900/min
+  error_rate{endpoint="/api/login"} > 0.03% AND
+  requests{endpoint="/api/login"} > 3600/min
 duration: 5 minutes
 severity: critical
 ```
@@ -478,7 +478,7 @@ severity: critical
 **Why stricter**: 
 - Business critical
 - Lower baseline (0.01% vs 0.02%)
-- Direct revenue impact
+- Direct user access impact
 
 ---
 
@@ -501,13 +501,13 @@ At 100% (50 connections): Complete failure
 
 ```yaml
 # Connection pool pressure
-alert: PaymentAPIDatabasePoolHigh
+alert: AuthServiceDatabasePoolHigh
 condition: db_connection_pool_utilization > 0.7
 duration: 5 minutes
 severity: warning
 
 # Connection pool exhaustion
-alert: PaymentAPIDatabasePoolExhausted
+alert: AuthServiceDatabasePoolExhausted
 condition: db_connection_pool_utilization > 0.9
 duration: 1 minute
 severity: critical
@@ -518,84 +518,84 @@ severity: critical
 - 90%: Imminent failure (immediate action)
 - Short duration for 90% (can't wait 5 minutes)
 
-#### Example: External API Latency (Payment Gateway)
+#### Example: External API Latency (SSO Provider)
 
 ```
-Metric: external_api_latency{service="payment_gateway"}
-Baseline: p50 200ms, p95 800ms, p99 1500ms
-SLA from vendor: p95 < 1000ms
+Metric: external_api_latency{service="sso_provider"}
+Baseline: p50 150ms, p95 600ms, p99 1200ms
+SLA from vendor: p95 < 800ms
 ```
 
 **Threshold**: Based on vendor SLA + margin
 ```yaml
-alert: PaymentGatewayLatencySLABreach
+alert: SSOProviderLatencySLABreach
 condition: |
-  p95(external_api_latency{service="payment_gateway"}) > 1200ms
+  p95(external_api_latency{service="sso_provider"}) > 1000ms
 duration: 10 minutes
 severity: warning
 ```
 
-1200ms = vendor p95 SLA (1000ms) + 20% margin
+1000ms = vendor p95 SLA (800ms) + 25% margin
 
-**Why**: Don't alert on vendor's p99 (1500ms) - that's expected. Alert when they breach their SLA commitment.
+**Why**: Don't alert on vendor's p99 (1200ms) - that's expected. Alert when they breach their SLA commitment.
 
 ---
 
 ### Layer 4: Product/Business Metrics
 
-#### Example: Conversion Rate (End-to-End Payment Flow)
+#### Example: Success Rate (End-to-End Login Flow)
 
 Using journey metrics from README.md:
 ```
-Flow: request_payment → verify_user → process_payment → confirm → success
-Baseline: C(t) = 0.85 (85% conversion rate)
-Traffic: 100 attempts/min
+Flow: login_request → validate_credentials → check_mfa → create_session → success
+Baseline: C(t) = 0.92 (92% success rate)
+Traffic: 200 attempts/min
 ```
 
-**Baseline conversion by step**:
+**Baseline success by step**:
 ```
-Step 1→2 (T1): 0.98 (verify user)
-Step 2→3 (T2): 0.95 (process payment)
-Step 3→4 (T3): 0.99 (confirm)
-Step 4→5 (T4): 0.96 (success)
+Step 1→2 (T1): 0.98 (validate credentials)
+Step 2→3 (T2): 0.97 (check MFA)
+Step 3→4 (T3): 0.99 (create session)
+Step 4→5 (T4): 0.98 (success)
 
-C = 0.98 × 0.95 × 0.99 × 0.96 = 0.88
+C = 0.98 × 0.97 × 0.99 × 0.98 = 0.92
 ```
 
 **Observed data (1 week)**:
 ```
-C(t) varies between 0.82 - 0.90
-Mean C: 0.86
-Stddev C: 0.02
+C(t) varies between 0.88 - 0.95
+Mean C: 0.92
+Stddev C: 0.015
 ```
 
 **Variance calculation**:
 ```
-At 100 attempts/min, 5-min window:
-n = 500 attempts
-Var(C) ≈ C(1-C)/n = 0.86 × 0.14 / 500 = 0.00024
-SE(C) = sqrt(0.00024) = 0.015 = 1.5%
+At 200 attempts/min, 5-min window:
+n = 1000 attempts
+Var(C) ≈ C(1-C)/n = 0.92 × 0.08 / 1000 = 0.0000736
+SE(C) = sqrt(0.0000736) = 0.0086 = 0.86%
 ```
 
 **Control limits (3σ)**:
 ```
-UCL = 0.86 + (3 × 0.015) = 0.905
-LCL = 0.86 - (3 × 0.015) = 0.815
+UCL = 0.92 + (3 × 0.0086) = 0.946
+LCL = 0.92 - (3 × 0.0086) = 0.894
 ```
 
 **Threshold**:
 ```yaml
-alert: PaymentFlowConversionLow
+alert: AuthServiceLoginSuccessLow
 condition: |
-  conversion_rate < 0.82 AND
-  attempts_last_5min > 100
+  login_success_rate < 0.89 AND
+  login_attempts_last_5min > 200
 duration: 15 minutes  # 3 consecutive windows
 severity: warning
 ```
 
 **Why**:
-- 0.82 is LCL (statistically significant drop)
-- Requires 100+ attempts (statistical significance)
+- 0.89 is LCL (statistically significant drop)
+- Requires 200+ attempts (statistical significance)
 - 15 minutes = 3 windows (avoids single-window noise)
 
 ---
@@ -604,11 +604,11 @@ severity: warning
 
 ### Problem: Low Traffic Edge Case
 
-**Scenario**: Weekend night, traffic drops to 5 req/s
+**Scenario**: Weekend night, traffic drops to 10 req/s
 ```
-5-min window: 300 requests
-3 errors observed
-Error rate: 3/300 = 1%
+5-min window: 600 requests
+6 errors observed
+Error rate: 6/600 = 1%
 ```
 
 Normal error rate is 0.02%. Should we alert?
@@ -641,10 +641,10 @@ CI = [0.0162 - 0.011, 0.0162 + 0.011]
 
 ### Alert Logic with Sample Size
 ```yaml
-alert: PaymentAPIErrorRateHighLowTraffic
+alert: AuthServiceErrorRateHighLowTraffic
 condition: |
   error_rate_5min > 0.1% AND
-  requests_5min >= 300 AND
+  requests_5min >= 600 AND
   error_rate_15min > 0.05%  # Require sustained over longer window
 duration: 0
 severity: warning
@@ -661,7 +661,7 @@ severity: warning
 When p95 latency > 200ms, what's the cause?
 
 ```yaml
-alert: PaymentAPILatencyHighCPU
+alert: AuthServiceLatencyHighCPU
 condition: |
   p95(latency) > 0.2 AND
   cpu_percent > 70
@@ -669,7 +669,7 @@ message: "High latency caused by CPU saturation"
 severity: critical
 action: "Scale horizontally"
 
-alert: PaymentAPILatencyHighDatabaseSlow
+alert: AuthServiceLatencyHighDatabaseSlow
 condition: |
   p95(latency) > 0.2 AND
   p95(db_query_duration) > 0.1 AND
@@ -678,15 +678,15 @@ message: "High latency caused by slow database queries"
 severity: critical
 action: "Check database performance, review slow queries"
 
-alert: PaymentAPILatencyHighExternalAPI
+alert: AuthServiceLatencyHighExternalSSO
 condition: |
   p95(latency) > 0.2 AND
-  p95(external_api_latency) > 1.0 AND
+  p95(external_api_latency{service="sso_provider"}) > 1.0 AND
   cpu_percent < 60 AND
   p95(db_query_duration) < 0.05
-message: "High latency caused by external payment gateway"
+message: "High latency caused by external SSO provider"
 severity: warning
-action: "Contact payment gateway provider"
+action: "Contact SSO provider support"
 ```
 
 **Why**: Same symptom (high latency), different root causes, different actions.
@@ -778,14 +778,14 @@ Before deploying:
 ### 6. Document Reasoning
 For each alert, document:
 ```yaml
-alert: PaymentAPIErrorRateHigh
-threshold: 0.1%
+alert: AuthServiceErrorRateHigh
+threshold: 0.05%
 reasoning: |
   - Baseline: 0.02% (last 90 days)
-  - p99: 0.045%
-  - 0.1% = 5x baseline = clear degradation
-  - At 100 req/s, 0.1% = 6 errors/min = user-impacting
-  - SLO: 99.9% (0.1% budget)
+  - p99: 0.042%
+  - 0.05% = 2.5x baseline = clear degradation
+  - At 200 req/s, 0.05% = 6 errors/min = user-impacting
+  - SLO: 99.95% (0.05% budget)
 last_tuned: 2024-01-15
 false_positive_rate: 2% (last 30 days)
 ```
