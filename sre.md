@@ -15,9 +15,6 @@
 
 ### Metric Types
 - Distributions > histograms > gauges for latency/duration
-- Counters for events (requests, errors, completions)
-- Gauges for snapshots (pool sizes, queue depth, utilization) - mostly obsolete with wide events
-- Distributions: accurate percentiles post-collection, global aggregation across hosts
 
 ### Observability Strategy
 - If possible adopt: Wide events + structured logs
@@ -52,14 +49,14 @@
 - Consistent naming (lowercase, underscores)
 - Cardinality < 100 (safe), < 1000 (manageable)
 - Group values: `status:5xx` not individual codes
-- Test: Can you aggregate meaningfully by this tag?
+- Test: Can you aggregate meaningfully by this tag? 
+- Tags are used for aggregation and filtering
 - Enforce: Tag changes via PR review
 
 ---
 
 ### Anti-Patterns
-- High cardinality tags (user_id, order_id, session_id, timestamps)
-- Losing tags across layers (if node has `service:foo`, API layer must preserve it)
+- Losing tags across layers (if k8s node has `service:foo`, API/Product layer must preserve it)
 - Bad math:
   - **Averaging percentiles**: `avg(p95)` across hosts is meaningless - use distributions that aggregate correctly
   - **Averaging averages**: Don't average CPU across unequal time windows or different request volumes
@@ -72,31 +69,149 @@
 
 ---
 
-## Visualization Best Practices
+## Visualization & Dashboard Design
 
-| Metric Type | Visualization | Use Case |
-|-------------|---------------|----------|
-| Counter → Rate | Line graph | Request rate, error rate over time |
-| Distribution | Line (multi-percentile) | p50, p95, p99 latency on same chart |
-| Distribution | Heatmap | See latency distribution shift over time |
-| Gauge | Line graph | Resource utilization trends |
-| Top N | Table/Bar | Slowest endpoints, highest error sources |
-| SLO | Single number + trend | Current compliance vs target |
+### Chart Types by Purpose
+
+**Time Series (Line/Area)**
+- Request rate, error rate, throughput over time
+- Multi-line: p50/p95/p99 latency on same chart (use separate y-axes if scales differ)
+- Overlay error rate on traffic graph (correlate issues with load)
+- Area stacked: breakdown by endpoint, status code, tenant tier
+- Use log scale for metrics with wide ranges (1-10000)
+
+**Heatmaps**
+- Latency distribution over time (reveals bimodal patterns, gradual degradation)
+- Request volume by hour/day (seasonality patterns)
+- Error density across time + endpoints
+- Better than line charts for showing distribution shape changes
+
+**Time Comparisons**
+- Current vs last week: `metric / week_before(metric)` as percentage
+- Before/after deploy: vertical line annotation at deploy time
+- Multi-series: this hour vs same hour yesterday/last week
+- Use for: traffic patterns, conversion rates, error rates
+
+**Correlation Charts**
+- Dual y-axis: latency + error rate (spot correlations)
+- Dual y-axis: traffic + CPU/memory (bounded resource) (capacity planning)
+- Scatter: request volume vs p99 latency (find breaking points)
+- Avoid: >3 metrics on one chart (cognitive overload)
+
+**Distribution Snapshots**
+- Histogram: current latency distribution (last 5min)
+- Percentile bars: p50/p90/p95/p99 side-by-side
+- Box plot: show median, IQR, outliers
+- Use for: current state analysis, not trends
+
+**Aggregation Views**
+- Top N table: slowest endpoints, highest error rates, busiest tenants
+- Top N bar: side-by-side comparison
+- Tree map: proportional space allocation (which endpoint gets most traffic)
+- Pie charts: avoid
+
+**Status Indicators**
+- Single value: current error rate, active users, queue depth
+- Change indicator: +/-% vs last hour/day
+- Traffic light: green/yellow/red based on thresholds
+- SLO compliance: % + time remaining in error budget
+
+### Dashboard Organization by Layer
+
+**Node/Host Layer Dashboard**
+```
+Row 1: Resource Utilization
+  - CPU % | Memory % | Disk I/O | Network I/O
+Row 2: Runtime Metrics
+  - JVM heap used/max | GC pause time (p95/p99) | Thread count
+Row 3: Trends & Forecasts
+  - CPU trend (7d) + forecast | Memory trend + forecast | Disk trend + forecast
+Row 4: Outliers
+  - Hosts with abnormal CPU | Hosts with high GC pause | Hosts with errors
+```
+
+**API Layer Dashboard**
+```
+Row 1: Golden Signals
+  - Traffic (RPS) | Latency (p50/p95/p99) | Error Rate % | Saturation
+Row 2: Time Comparisons
+  - Traffic now vs last week | Latency now vs baseline | Error rate trend
+Row 3: Endpoint Breakdown
+  - Top endpoints by traffic | Top endpoints by latency | Top error types
+Row 4: Status Codes
+  - 2xx rate | 4xx rate | 5xx rate | Status code distribution
+```
+
+**Dependencies Layer Dashboard**
+```
+Row 1: Database
+  - Query latency (p50/p95/p99) | Connection pool utilization | Query errors
+Row 2: External APIs
+  - API latency by service | Error rate by service | Circuit breaker state
+Row 3: Cache
+  - Hit rate % | Cache latency | Eviction rate | Memory usage
+Row 4: Dependency Health
+  - All dependencies status | Slowest dependency | Most failing dependency
+```
+
+**Product Layer Dashboard**
+```
+Row 1: Business KPIs
+  - Revenue today | Orders/hour | Conversion rate | Active users
+Row 2: Conversion Funnels
+  - Checkout funnel (steps as bars) | Signup funnel | Feature adoption
+Row 3: User Segmentation
+  - Traffic by tenant tier | Revenue by tier | Errors by tier
+Row 4: Growth & Trends
+  - Revenue vs last week | Conversion trend (30d) | User growth rate
+```
+
+**Incident Response Dashboard (Cross-Layer)**
+```
+Row 1: Current State (last 15min)
+  - Error rate | p99 latency | Active alerts | Traffic
+Row 2: Recent Changes
+  - Deploys (annotations) | Config changes | Traffic shifts
+Row 3: Layer Drill-down
+  - API errors by endpoint | Dependency errors | Host outliers
+Row 4: Impact Analysis
+  - Affected tenants | Affected endpoints | Blast radius
+```
+
+### Best Practices
+
+**Annotations**
+- Mark deployments (version, who, when)
+- Mark incidents (start/end, severity, cause)
+- Mark config changes (feature flags, scaling events)
+- Mark A/B test windows
+
+**Color Usage**
+- Green: healthy, success, < threshold
+- Yellow: warning, degraded, approaching threshold
+- Red: critical, failure, > threshold
+- Gray: no data, disabled, unknown
+- Consistent across all dashboards
+
+**Time Windows**
+- Incident response: 15min, 1hr, 4hr
+- Operations: 1hr, 6hr, 24hr
+- Capacity planning: 7d, 30d, 90d
+- Business metrics: today, this week, this month
 
 ---
 
 ## Alert Design
 
 ### Critical (Page)
-- SLO burn rate critical (budget exhausted in < 1hr)
-- Complete outage
-- Error rate >5% or p99 >5x baseline
+- SLO burn rate critical (budget exhausted in < threshold)
+- Complete outage (circuit breaker open)
 
 ### Warning (Ticket)
-- SLO burn rate elevated (budget exhausted in 6-24hrs)
-- Error rate >1%
-- Saturation >80%
-- Dependency degraded
+- SLO burn rate elevated (budget exhausted in warning_threshold)
+- Error rate >Threshold
+- Saturation >Threshold
+- Dependency degraded, error rate >Threshold
 
 ### Structure
 ```
