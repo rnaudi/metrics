@@ -1,4 +1,4 @@
-# SRE Math: Practical Threshold Setting Guide
+# sre math: threshold guide
 
 > How to set correct thresholds for alerts using real data and statistics. Examples based on an authentication service handling 200 req/s.
 
