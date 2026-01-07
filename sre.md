@@ -224,6 +224,25 @@ Dashboard: [Link]
 
 ---
 
+### Metric Naming
+```
+<namespace>.<component>.<metric>
+payment.api.request.duration
+payment.db.query.duration
+payment.cache.hit.count
+```
+
+Make sure metric naming is consistent across services and layers
+
+### Monitor Types
+- **Metric**: Threshold crossing
+- **Anomaly**: Unusual behavior detection
+- **Outlier**: One host behaving differently
+- **Forecast**: Predict threshold crossing
+- **Composite**: Boolean logic across monitors
+
+---
+
 ## Signal & Noise
 
 ### Signal-to-Noise Ratio
@@ -274,22 +293,3 @@ Dashboard: [Link]
 - T-test: continuous (latency)
 - Need sufficient traffic for minimum detectable effect
 - Verify significance before alerting on "degradation"
-
----
-
-### Metric Naming
-```
-<namespace>.<component>.<metric>
-payment.api.request.duration
-payment.db.query.duration
-payment.cache.hit.count
-```
-
-Make sure metric naming is consistent across services and layers
-
-### Monitor Types
-- **Metric**: Threshold crossing
-- **Anomaly**: Unusual behavior detection
-- **Outlier**: One host behaving differently
-- **Forecast**: Predict threshold crossing
-- **Composite**: Boolean logic across monitors
