@@ -42,11 +42,11 @@
 - `user_tier:premium|free`
 
 ### Bad Tagging
-- ❌ Redundant: `service:payment-api` when already in metric namespace
-- ❌ High cardinality: `user_id`, `session_id`, `order_id`, `request_id`, `ip_address`
-- ❌ IDs in paths: `endpoint:/api/orders/12345` → use `/api/orders/:id`
-- ❌ Host-specific: `database_host:prod-db-1.aws.com` → use logical name
-- ❌ Unbounded: `error_message:Connection timeout` → use `error_type:timeout`
+- Redundant: `service:payment-api` when already in metric namespace
+- High cardinality: `user_id`, `session_id`, `order_id`, `request_id`, `ip_address`
+- IDs in paths: `endpoint:/api/orders/12345` → use `/api/orders/:id`
+- Host-specific: `database_host:prod-db-1.aws.com` → use logical name
+- Unbounded: `error_message:Connection timeout` → use `error_type:timeout`
 
 ### Good Tagging
 - Consistent naming (lowercase, underscores)
