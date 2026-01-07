@@ -1,4 +1,6 @@
-# SRE Observability: Best Practices & Rules of Thumb
+# sre
+
+> **Note:** This is a comprehensive reference guide covering observability concepts and patterns. Not everything applies to every situation - use what makes sense for your scale and context. Concepts and ideas are universal; implementation details are flexible.
 
 ## References
 - [AWS Observability Best Practices](https://aws-observability.github.io/observability-best-practices/)
@@ -11,7 +13,7 @@
 
 ---
 
-## Core Principles
+## Core
 
 ### Metric Types
 - Distributions > histograms > gauges for latency/duration
@@ -130,7 +132,7 @@
 - Traffic light: green/yellow/red based on thresholds
 - SLO compliance: % + time remaining in error budget
 
-### Dashboard Organization by Layer
+### Full example: Dashboard Organization by Layer
 
 **Node/Host Layer Dashboard**
 ```
