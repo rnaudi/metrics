@@ -53,6 +53,20 @@
 - Tags are used for aggregation and filtering
 - Enforce: Tag changes via PR review
 
+## Cost Considerations
+
+### Datadog Pricing
+- Custom metrics billed per unique time series (metric name + unique tag combination)
+- Example: `http.requests{endpoint:/api/checkout, method:POST, status:200, env:prod, region:us-east-1}` = 1 time series
+- High cardinality tags multiply costs exponentially
+- Real example: Adding `user_id` tag (1000 users) × existing tags (100 combos) = 100k time series
+- Monitor your custom metrics count in Datadog → Usage & Cost
+
+### Cost Control
+- Track cardinality: Review top metrics by time series count monthly
+- Remove unused metrics after 30 days
+- Group tags: `status:5xx` not `status:500|501|502|503`
+
 ---
 
 ### Anti-Patterns
@@ -203,15 +217,37 @@ Row 4: Impact Analysis
 
 ## Alert Design
 
+### SLO Burn Rate Alerting
+
+**Formula:**
+```
+Error Budget = 1 - SLO target
+Burn Rate = (errors in window) / (total requests in window) / Error Budget
+
+Example: 99.9% SLO (0.1% error budget)
+- Observed error rate: 0.5% over 1hr
+- Burn Rate = 0.5% / 0.1% = 5x
+- At 5x burn rate, budget exhausted in: 30 days / 5 = 6 days
+```
+
+**Alert Thresholds:**
+- **Critical (Page)**: 1hr window burn rate >14.4x (budget gone in 2 hrs)
+- **Warning (Ticket)**: 6hr window burn rate >6x (budget gone in 5 days)
+- **Multi-window**: Require BOTH short + long window breached (reduce false positives)
+
+**At low traffic (10 RPS):**
+- Use longer windows (6hr+) for statistical significance
+- Don't alert on <100 requests (sample size too small)
+
 ### Critical (Page)
-- SLO burn rate critical (budget exhausted in < threshold)
-- Complete outage (circuit breaker open)
+- SLO burn rate >14.4x (1hr window)
+- Complete outage (0 successful requests in 5min)
 
 ### Warning (Ticket)
-- SLO burn rate elevated (budget exhausted in warning_threshold)
-- Error rate >Threshold
-- Saturation >Threshold
-- Dependency degraded, error rate >Threshold
+- SLO burn rate >6x (6hr window)
+- Error rate >1% sustained (15min+)
+- Saturation >80% sustained (30min+)
+- Dependency circuit breaker open
 
 ### Structure
 ```
