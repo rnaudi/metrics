@@ -14,34 +14,53 @@
 ## Core Principles
 
 ### Metric Types
-- Prefer distributions/timers over histograms for latency measurement
-- Prefer distributions/timers over gauges for duration tracking
-- Use counters for event counts (requests, errors, completions)
-- Use gauges for point-in-time snapshots (pool sizes, queue depths, utilization)
-- **Note**: Gauges largely obsolete with wide events - prefer structured events with context
-- Distributions provide accurate percentiles (p50, p95, p99) post-collection
-- Distributions aggregate globally across hosts without data loss
+- Distributions > histograms > gauges for latency/duration
+- Counters for events (requests, errors, completions)
+- Gauges for snapshots (pool sizes, queue depth, utilization) - mostly obsolete with wide events
+- Distributions: accurate percentiles post-collection, global aggregation across hosts
 
 ### Observability Strategy
-- Prefer wide events and structured logs
-- Normalize tags across all services and environments
-- Instrument at service boundaries (HTTP handlers, DB calls, external APIs)
-- Monitor Golden Signals: latency, traffic, errors, saturation (bounded resources)
-- Track business metrics alongside technical metrics
-- Split observability in layers:
-  - Node / Host: CPU, Memory, Disk I/O, Network I/O, JVM/Golang VM
-  - API Network: Latency, Throughput, Errors per endpoint
-  - IO Clients: DB clients, HTTP clients, Messaging clients, Queue clients, any external clients
-  - Product metrics: Metrics that answer product questions
-    - How many users are using this feature?
-    - When are users using this feature? Do we notice any pattern? Seasonality?
+- If possible adopt: Wide events + structured logs
+- Normalize tags across services/environments
+- Instrument at boundaries (HTTP handlers, DB calls, external APIs)
+- Golden Signals: latency, traffic, errors, saturation
+- Observability layers:
+  - **Node/Host**: CPU, memory, disk/network I/O, JVM/Go runtime
+  - **API**: Latency, throughput, errors per endpoint
+  - **Dependencies**: DB, HTTP clients, cache, external APIs
+  - **Product**: Feature usage, conversion funnels, user behavior
+
+## Tagging Strategy
+
+### Standard Tags
+- `env:production|staging|dev`
+- `region:us-east-1`, `az:us-east-1a`
+- `version:2.1.0` (canary analysis)
+- `cluster:prod-1`, `namespace:payments`
+- `tenant_id:acme` (bounded cardinality only)
+- `tenant_tier:enterprise|pro|free`
+- `user_tier:premium|free`
+
+### Bad Tagging
+- ❌ Redundant: `service:payment-api` when already in metric namespace
+- ❌ High cardinality: `user_id`, `session_id`, `order_id`, `request_id`, `ip_address`
+- ❌ IDs in paths: `endpoint:/api/orders/12345` → use `/api/orders/:id`
+- ❌ Host-specific: `database_host:prod-db-1.aws.com` → use logical name
+- ❌ Unbounded: `error_message:Connection timeout` → use `error_type:timeout`
+
+### Good Tagging
+- Consistent naming (lowercase, underscores)
+- Cardinality < 100 (safe), < 1000 (manageable)
+- Group values: `status:5xx` not individual codes
+- Test: Can you aggregate meaningfully by this tag?
+- Enforce: Tag changes via PR review
+
+---
 
 ### Anti-Patterns
-- Never use user_id, order_id, session_id, or timestamps as tags (high cardinality)
-- Do not lose data tags across layers:
-  - If we have a node in Kubernetes, tagged for a service `service:my-service`, we should we able to aggregate data for that tag in superior layers
-  - Layers acts as wrappers around the data, so we always and should preserve data and tags
-- Bad math, common statistical errors:
+- High cardinality tags (user_id, order_id, session_id, timestamps)
+- Losing tags across layers (if node has `service:foo`, API layer must preserve it)
+- Bad math:
   - **Averaging percentiles**: `avg(p95)` across hosts is meaningless - use distributions that aggregate correctly
   - **Averaging averages**: Don't average CPU across unequal time windows or different request volumes
   - **Rates on rates**: Taking rate of a rate compounds errors - start from raw counters
@@ -49,7 +68,7 @@
   - **Sample size ignorance**: 1 error out of 2 requests ≠ 1000 errors out of 2000 requests (confidence intervals matter)
   - **Simpson's Paradox**: Aggregating across different populations can reverse trends
   - **Survivorship bias**: Only measuring successful requests ignores failed/timed-out ones
-  - **Alert on noise**: Setting thresholds without considering variance 
+  - **Alert on noise**: Thresholds without considering variance/seasonality
 
 ---
 
@@ -69,16 +88,15 @@
 ## Alert Design
 
 ### Critical (Page)
-- SLO burn rate critical (exhaust budget in < 1 hour)
-- Complete service outage
-- Error rate > 5%
-- p99 latency > 5x baseline
+- SLO burn rate critical (budget exhausted in < 1hr)
+- Complete outage
+- Error rate >5% or p99 >5x baseline
 
 ### Warning (Ticket)
-- SLO burn rate elevated (exhaust budget in 6-24 hours)
-- Error rate > 1%
-- Resource saturation > 80%
-- Dependency degradation
+- SLO burn rate elevated (budget exhausted in 6-24hrs)
+- Error rate >1%
+- Saturation >80%
+- Dependency degraded
 
 ### Structure
 ```
@@ -88,6 +106,59 @@ Impact: [User-facing|Internal]
 Runbook: [Link]
 Dashboard: [Link]
 ```
+
+---
+
+## Signal & Noise
+
+### Signal-to-Noise Ratio
+- Signal = real system behavior, Noise = random fluctuations/errors
+- High SNR = actionable, Low SNR = alert fatigue
+- Increase SNR: longer windows, smoothing, percentiles not averages
+
+### Variance & Thresholds
+- Set thresholds using σ: `threshold = baseline + (N × σ)`
+  - N=2: 95% confidence
+  - N=3: 99.7% confidence
+- Coefficient of Variation (CV = σ/mean):
+  - CV <0.1: tight thresholds ok
+  - CV >0.5: need wide thresholds
+
+### Smoothing
+- Moving average: 5min for high-freq, 1hr for daily patterns
+- Exponential: weight recent data more
+- Rollup for storage:
+  - 1s → 24hrs
+  - 1min → 7d
+  - 1hr → 90d+
+
+### Outliers
+- Z-score: `(value - mean) / σ`, flag if |Z| >3
+- IQR: outlier if `value < Q1 - 1.5×IQR` or `value > Q3 + 1.5×IQR`
+- MAD: robust to extremes
+- Better: use distributions (p95, p99) instead of filtering
+
+### Seasonality
+- Compare to same time last week: `week_before(metric)`
+- Alert on deviation from baseline, not absolute threshold
+- Forecast: "disk full in 3d at current trend"
+
+### Alert Windows
+- Too short = false positives, too long = delayed detection
+- Rule: window ≥ 3-5× noise frequency (30s fluctuation → 2-3min window)
+- Multi-window: 1min AND 10min both breached (reduces false positives)
+
+### Sample Size
+- Small N = wide CI, low confidence (10 requests vs 10k requests)
+- 1 error / 2 requests = 50% ± 70% (meaningless)
+- Use Wilson score interval for proportions
+- Don't alert on insufficient samples
+
+### Statistical Tests
+- Chi-squared: categorical (conversion rates)
+- T-test: continuous (latency)
+- Need sufficient traffic for minimum detectable effect
+- Verify significance before alerting on "degradation"
 
 ---
 
