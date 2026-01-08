@@ -79,6 +79,8 @@ Since approx. >2020, new tools like Honeycomb have been built on top of OLAP dat
 
 Still on innovation stage, I'd recommend to take a look into it. In my experience wide events remove most of custom metrics and the need of all traditional tracing tools.
 
+Still, the same tagging ideas described are applied to wide events here. Wide events are like distribution/timers. The biggest trade-off is log sampling. 
+
 ---
 
 ### Anti-Patterns
