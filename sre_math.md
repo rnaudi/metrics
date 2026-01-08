@@ -1,6 +1,6 @@
 # sre math: threshold guide
 
-> How to set correct thresholds for alerts using real data and statistics. Examples based on an authentication service handling 200 req/s.
+> **Note:** How to set correct thresholds for alerts using real data and statistics. Examples based on an authentication service handling 200 req/s.
 
 ## Validation Checklist
 
@@ -22,44 +22,56 @@
 
 ---
 
-## Example Service
 
-**Auth Service**: HTTP REST service handling authentication and authorization
-- **Normal traffic**: 200 req/s (17.3M requests/day)
-- **Stack**: 6 hosts, load balanced
-- **Dependencies**: PostgreSQL (user store), Redis (session cache), external SSO providers (SAML/OAuth)
-- **User base**: Multi-tenant SaaS (mix of free/pro/enterprise)
-
-**Goal**: Set thresholds that catch real problems without false positives.
-
----
 
 ## The Process
 
-### Step 1: Collect Baseline Data
-- Run service in production for 1-2 weeks
-- Ensure this period is "healthy" (no major incidents)
-- Capture all metrics at 1-minute resolution
-- Export to CSV or query from metrics backend
+### Five-Step Monitor Definition
 
-### Step 2: Analyze Distribution
-For each metric:
-- Calculate mean (μ), standard deviation (σ)
-- Calculate percentiles: p50, p90, p95, p99
-- Check for patterns: daily cycles, weekly patterns, trends
-- Identify outliers
+Every monitor follows this process:
 
-### Step 3: Set Thresholds
-Based on metric type and characteristics:
-- **Stable metrics** (low variance): μ + 3σ
-- **Variable metrics** (high variance): percentile-based (p95 or p99)
-- **Ratios** (error rates): absolute thresholds with statistical significance
-- **Capacity** (CPU, memory): based on saturation point
+0. **What question are you answering?** Start here, not with the metric.
+   - Example: "Is the service processing requests?" → measure request rate
+   - Example: "Are users experiencing errors?" → measure error rate
+   - Example: "Is the service responsive?" → measure latency
 
-### Step 4: Validate
-- Simulate historical incidents - would alerts fire?
-- Deploy to staging with lower thresholds
-- Tune based on false positive rate
+**Metrics are for systems** (automated alerting, investigation). **Visualizations are for humans** (dashboards, intuition).
+
+1. **Identify the metric**: What are you measuring? (request rate, error rate, latency, CPU, memory, etc.)
+   - Determine metric type: distribution, timer, counter, ratio
+
+2. **Analyze distribution properties**: How does this metric behave?
+   - Calculate statistical properties: mean, standard deviation, percentiles
+   - Identify patterns: stable vs variable, seasonal vs constant, bimodal distribution
+   - Check for outliers and anomalies in baseline data
+
+3. **Choose threshold approach**: Based on properties, what detects failures best?
+   - Static thresholds: simple, predictable, require manual tuning
+   - Dynamic thresholds: adaptive, complex, require sufficient data volume
+   
+4. **Validate thresholds**. Simulate historical incidents. Would alerts fire? Deploy to staging with lower thresholds.
+
+### Static vs Dynamic Thresholds
+
+**Static Thresholds:** Fixed values that don't change unless manually updated. Simple to understand and debug. Predictable. Can produce false positives if data distribution changes. Require manual tuning as system evolves. Examples: "alert if error_rate > 5%", "alert if latency > 200ms", pre-computed time-of-week baselines.
+
+**Dynamic Thresholds:** Calculated from recent/rolling data. Adapt automatically. More complex to debug. Can mask real issues if baseline becomes polluted. Require sufficient data volume. Examples: "alert if value > rolling_avg(7d) + 3σ", anomaly detection algorithms.
+
+Static thresholds work well for stable metrics. Dynamic thresholds handle changing traffic patterns better but are harder to reason about.
+
+Each example below shows both approaches.
+
+---
+
+## Example Service
+
+**Auth Service**: HTTP REST service handling authentication and authorization
+- **Normal traffic**: 200 req/s 
+- **Stack**: 6 hosts, load balanced
+- **Dependencies**: PostgreSQL, Redis, external SSO providers (SAML/OAuth)
+- **User base**: mix of free/pro/enterprise
+
+**Goal**: Set thresholds that catch real problems without false positives.
 
 ---
 
@@ -85,19 +97,36 @@ threshold = 200 + (3 × 85) = 455 req/s
 But this misses context - 50 req/s is normal on Sunday, catastrophic on Tuesday at 2pm.
 
 #### Better Approach: Time-of-Week Baseline
-Calculate mean and σ for each hour-of-week bucket:
+Calculate mean and σ for each hour-of-week bucket (7 days × 24 hours = **168 buckets**):
 ```
 Tuesday 2pm: μ = 300, σ = 25
 Sunday 2pm: μ = 50, σ = 12
 ```
 
-#### Threshold Formula
+**Implementation:** Configure this at the observability platform level (Datadog, Prometheus with recording rules). Pre-compute μ and σ for each of the 168 time-of-week buckets from historical data, then reference the current bucket in alert conditions.
+
+Note: This is still a static threshold. The 168 buckets are pre-computed and don't adapt unless you manually recalculate them.
+
+#### Threshold Options
+
+**Option A: Static Time-of-Week Baseline**
+**Option A: Static Time-of-Week Baseline**
 ```
 threshold(hour, day) = μ(hour, day) + 3σ(hour, day)
 
 Tuesday 2pm: 300 + (3 × 25) = 375 req/s
 Sunday 2pm: 50 + (3 × 12) = 86 req/s
 ```
+Accounts for weekly patterns. Requires manual recalculation as traffic grows.
+
+**Option B: Dynamic Rolling Baseline**
+```
+threshold(current_time) = rolling_avg(same_hour_last_7d) - 3 × rolling_stddev(same_hour_last_7d)
+
+# Calculates mean and σ from the last 7 occurrences of current hour
+# Tuesday 2pm uses data from: last 7 Tuesdays at 2pm
+```
+Adapts automatically to traffic growth. More complex to debug. Can mask gradual degradation.
 
 #### Alert Rule
 ```yaml
@@ -112,10 +141,7 @@ severity: critical
 # Alert if rate < 225 for 5+ minutes
 ```
 
-**Why this works**: 
-- Adapts to daily patterns
-- 3σ = 99.7% confidence (0.3% false positive rate)
-- 5-minute duration filters transient dips
+Adapts to daily patterns. 3σ gives 99.7% confidence (0.3% false positive rate). 5-minute duration filters transient dips.
 
 ---
 
@@ -138,39 +164,35 @@ Max: 0.075%
 ```
 
 #### Analysis
-Error rate is a proportion. Need to consider:
-1. What error rate impacts users?
-2. What sample size gives confidence?
-3. What's statistically significant?
+Error rate is a proportion. Consider what error rate impacts users, what sample size gives confidence, and what's statistically significant.
 
-#### Threshold Setting
+#### Threshold Options
 
-**Method 1: SLO-Based**
-If you have a 99.95% availability SLO (stricter for auth):
+**Option A: Static SLO-Based Threshold**
 ```
+# If you have a 99.95% availability SLO:
 error_budget = 1 - 0.9995 = 0.05%
-
-threshold = error_budget = 0.05%
+threshold = 0.05%
 ```
+Directly tied to business SLO. Easy to understand and justify. Doesn't adapt if baseline error rate trends up due to system changes.
 
-Alert when error rate > 0.05% for 5+ minutes.
+**Option B: Dynamic Baseline + Statistical Margin**
+```
+# Recalculate weekly from last 7 days of data
+threshold = rolling_p99(7d) + 2 × rolling_stddev(7d)
+threshold = 0.042% + (2 × 0.008%) = 0.058%
+```
+Adapts to gradual changes in error patterns. Can mask real degradation if baseline becomes polluted. Requires clean training data.
 
-**Method 2: Statistical (Baseline + Margin)**
+**Multi-Window Burn Rate** (often works best)
 ```
-threshold = p99 + margin
-threshold = 0.042% + 0.008% = 0.05%
-```
-
-**Method 3: Multi-Window Burn Rate** (RECOMMENDED)
-```
-# Fast burn: 1-hour window
+# Combines static SLO with multiple time windows
 if error_rate_1h > 0.05% AND error_rate_6h > 0.03%:
     ALERT
 
-# This means:
-# - Short-term error rate 2.5x normal (0.02% → 0.05%)
-# - Sustained over 6 hours
-# - Reduces false positives from transient spikes
+# Short-term error rate 2.5x normal (0.02% → 0.05%)
+# Sustained over 6 hours
+# Reduces false positives from transient spikes
 ```
 
 #### Alert Rule
@@ -219,33 +241,41 @@ This would alert on p99.5 latency, which happens regularly.
 
 **NEVER use mean ± σ for latency.**
 
-#### Threshold Setting: Percentile-Based
+#### Threshold Options
 
-**For SLO**: "95% of requests complete in < 200ms"
+**Option A: Static Percentile Thresholds**
+
+Based on SLO: "95% of requests complete in < 200ms"
 ```
-threshold = 200ms at p95
+p95_threshold = 200ms
+p99_threshold = 1000ms
 
 if p95_latency_5min > 200ms:
-    ALERT
-```
-
-**For degradation detection**: "p95 increases by 50%"
-```
-baseline_p95 = 180ms
-threshold = baseline_p95 × 1.5 = 270ms
-
-if p95_latency_5min > 270ms:
-    ALERT
-```
-
-**For severe degradation**: Monitor p99
-```
-baseline_p99 = 450ms
-threshold = 1000ms  (round number, 2.2x baseline)
+    ALERT WARNING
 
 if p99_latency_5min > 1000ms:
     ALERT CRITICAL
 ```
+Simple to understand. Directly tied to SLO. Doesn't detect gradual degradation if it stays under threshold. Requires manual adjustment as system changes.
+
+**Option B: Dynamic Baseline + Percentage Increase**
+
+```
+# Recalculate baseline from last 7 days
+baseline_p95 = rolling_p95(7d) = 180ms
+baseline_p99 = rolling_p99(7d) = 450ms
+
+# Alert on relative degradation
+threshold_p95 = baseline_p95 × 1.5 = 270ms
+threshold_p99 = baseline_p99 × 2.0 = 900ms
+
+if p95_latency_5min > threshold_p95:
+    ALERT WARNING
+
+if p99_latency_5min > threshold_p99:
+    ALERT CRITICAL
+```
+Detects relative degradation even if under SLO. Adapts to system improvements. Can mask gradual degradation if baseline trends up. More complex to debug.
 
 #### Alert Rules
 ```yaml
@@ -262,10 +292,7 @@ duration: 5 minutes
 severity: critical
 ```
 
-**Why percentiles**:
-- Directly measure user experience
-- Not skewed by outliers (p95 ignores worst 5%)
-- Can aggregate across hosts using distributions
+Percentiles directly measure user experience. Not skewed by outliers (p95 ignores worst 5%). Can aggregate across hosts using distributions.
 
 ---
 
@@ -284,9 +311,7 @@ Max observed: 78%
 ```
 
 #### Analysis
-CPU is a capacity metric. Key questions:
-1. At what % does performance degrade?
-2. What % leaves headroom for load spikes?
+CPU is a capacity metric. At what percentage does performance degrade? What percentage leaves headroom for load spikes?
 
 Load testing results:
 ```
@@ -296,18 +321,39 @@ At 85% CPU: p95 latency = 1200ms (severe)
 At 95% CPU: requests timing out
 ```
 
-#### Threshold Setting: Capacity-Based
+#### Threshold Options
+
+**Option A: Static Capacity Thresholds**
+
 ```
 Warning: 70% (approaching saturation)
 Critical: 80% (degraded performance confirmed)
 ```
 
+Based on load testing. At 75% CPU, p95 latency degrades to 350ms (1.9x normal). At 80% CPU, clear performance impact observed.
+
 NOT using μ + 3σ because:
 ```
 μ + 3σ = 45 + (3 × 12) = 81%
 ```
+At 81%, service is already degraded. Need to alert earlier.
 
-At 81%, service is already degraded. We need to alert earlier.
+Based on actual load testing. Clear capacity planning. Doesn't account for efficiency improvements or code changes that reduce CPU usage.
+
+**Option B: Dynamic Baseline + Headroom**
+
+```
+# Recalculate from last 7 days
+baseline_p95 = rolling_p95(cpu_percent, 7d) = 65%
+headroom = 15%
+
+threshold_warning = baseline_p95 + headroom = 80%
+threshold_critical = baseline_p95 + (2 × headroom) = 95%
+```
+
+Adapts to code optimizations that reduce CPU usage. Detects unusual spikes. Can mask gradual CPU creep. Requires re-validation of performance at new thresholds.
+
+For capacity metrics, static thresholds usually work better. They're tied to physical limits and performance characteristics that don't change without load testing.
 
 #### Alert Rules
 ```yaml
@@ -329,10 +375,7 @@ condition: forecast(cpu_percent, 1h) > 80
 severity: warning
 ```
 
-**Why these thresholds**:
-- 70%: Time to investigate or scale (15min allows for human response)
-- 80%: Immediate action needed (5min catches fast degradation)
-- Forecast: Proactive capacity management
+70%: Time to investigate or scale (15min allows for human response). 80%: Immediate action needed (5min catches fast degradation). Forecast: Proactive capacity management.
 
 ---
 
@@ -361,7 +404,10 @@ Observed behavior:
 > 95% heap: OOM imminent
 ```
 
-#### Threshold Setting: Multi-Signal
+#### Threshold Options
+
+**Option A: Static Capacity Thresholds**
+
 ```
 # Memory usage thresholds
 Warning: heap > 75% sustained (3.0 GB)
@@ -371,6 +417,26 @@ Critical: heap > 85% sustained (3.4 GB)
 Warning: p99 GC pause > 100ms
 Critical: p99 GC pause > 500ms
 ```
+
+Based on observed behavior. At 75% heap, GC pauses start increasing (100-200ms). At 85% heap, constant GC thrashing (500ms+ pauses).
+
+Based on actual JVM behavior. Prevents OOM. Doesn't adapt if heap size changes or memory usage patterns improve.
+
+**Option B: Dynamic Baseline + GC Pressure**
+
+```
+# Recalculate from last 7 days
+baseline_heap_p95 = rolling_p95(heap_used_percent, 7d) = 70%
+threshold_warning = baseline_heap_p95 + 10% = 80%
+threshold_critical = baseline_heap_p95 + 20% = 90%
+
+# Combined with GC pressure (always monitor)
+gc_pause_threshold = rolling_p99(gc_pause_seconds, 7d) × 2
+```
+
+Adapts to memory optimizations. Detects unusual memory growth. Can mask memory leaks if baseline trends up gradually. Risky near OOM limits.
+
+For memory, static thresholds are safer. OOM is a hard limit and GC behavior is predictable at specific utilization levels.
 
 #### Alert Rules
 ```yaml
@@ -391,7 +457,7 @@ duration: 5 minutes
 severity: critical
 ```
 
-**Composite signal**: High heap + frequent GC = real pressure, not just normal usage spike.
+Composite signal: High heap + frequent GC = real pressure, not just normal usage spike.
 
 ---
 
@@ -403,7 +469,7 @@ Disk read errors: 0.002 errors/hour (rare)
 Network connection resets: 1.5/minute (background noise)
 ```
 
-#### Threshold Setting: Count-Based
+#### Thresholds
 For rare events, use absolute counts:
 
 ```yaml
@@ -650,7 +716,7 @@ duration: 0
 severity: warning
 ```
 
-**Key**: At low traffic, require longer duration OR multiple windows to confirm.
+At low traffic, require longer duration OR multiple windows to confirm.
 
 ---
 
