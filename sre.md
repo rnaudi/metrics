@@ -1,6 +1,8 @@
 # sre
 
-> **Note:** This is a comprehensive reference guide covering observability concepts and patterns. Not everything applies to every situation - use what makes sense for your scale and context. Concepts and ideas are universal; implementation details are flexible.
+> **Note:** This is a reference guide covering observability concepts and patterns. Not everything applies to every situation - use what makes sense for your scale and context. Concepts and ideas are universal; implementation details are flexible.
+>
+> **AI Usage:** Some examples in this guide were generated with AI assistance to illustrate concepts. The patterns and approaches are based on real SRE practices. Always validate with your own context.
 
 ## References
 - [AWS Observability Best Practices](https://aws-observability.github.io/observability-best-practices/)
@@ -19,7 +21,7 @@
 - Distributions > histograms > gauges for latency/duration
 
 ### Observability Strategy
-- If possible adopt: Wide events + structured logs
+- Wide events + structured logs give you the most flexibility
 - Normalize tags across services/environments
 - Instrument at boundaries (HTTP handlers, DB calls, external APIs)
 - Golden Signals: latency, traffic, errors, saturation
@@ -51,18 +53,18 @@
 - Consistent naming (lowercase, underscores)
 - Cardinality < 100 (safe), < 1000 (manageable)
 - Group values: `status:5xx` not individual codes
-- Test: Can you aggregate meaningfully by this tag? 
-- Tags are used for aggregation and filtering
-- Enforce: Tag changes via PR review
+- Ask yourself: Can you aggregate meaningfully by this tag?
+- Tags are for aggregation and filtering
+- Enforce tag changes via PR review
 
 ## Cost Considerations
 
 ### Datadog Pricing
-- Custom metrics billed per unique time series (metric name + unique tag combination)
+- Custom metrics are billed per unique time series (metric name + unique tag combination)
 - Example: `http.requests{endpoint:/api/checkout, method:POST, status:200, env:prod, region:us-east-1}` = 1 time series
 - High cardinality tags multiply costs exponentially
-- Real example: Adding `user_id` tag (1000 users) × existing tags (100 combos) = 100k time series
-- Monitor your custom metrics count in Datadog → Usage & Cost
+- Real example: Add `user_id` tag (1000 users) × existing tags (100 combos) = 100k time series
+- Check your custom metrics count in Datadog → Usage & Cost
 
 ### Cost Control
 - Track cardinality: Review top metrics by time series count monthly
@@ -72,16 +74,18 @@
 ---
 
 ### Anti-Patterns
-- Losing tags across layers (if k8s node has `service:foo`, API/Product layer must preserve it)
-- Bad math:
-  - **Averaging percentiles**: `avg(p95)` across hosts is meaningless - use distributions that aggregate correctly
-  - **Averaging averages**: Don't average CPU across unequal time windows or different request volumes
-  - **Rates on rates**: Taking rate of a rate compounds errors - start from raw counters
-  - **Division by zero**: `error_rate = errors / requests` breaks when requests = 0, use `errors / max(requests, 1)`
-  - **Sample size ignorance**: 1 error out of 2 requests ≠ 1000 errors out of 2000 requests (confidence intervals matter)
-  - **Simpson's Paradox**: Aggregating across different populations can reverse trends
-  - **Survivorship bias**: Only measuring successful requests ignores failed/timed-out ones
-  - **Alert on noise**: Thresholds without considering variance/seasonality
+
+Common mistakes that break monitoring:
+
+- **Losing tags across layers**: If k8s node has `service:foo`, preserve it in API/Product layer
+- **Averaging percentiles**: `avg(p95)` across hosts is meaningless - use distributions
+- **Averaging averages**: Don't average CPU across unequal time windows or request volumes
+- **Rates on rates**: Taking rate of a rate compounds errors - start from raw counters
+- **Division by zero**: `error_rate = errors / requests` breaks when requests = 0, use `errors / max(requests, 1)`
+- **Sample size ignorance**: 1 error out of 2 requests ≠ 1000 errors out of 2000 requests (confidence intervals matter)
+- **Simpson's Paradox**: Aggregating across different populations can reverse trends
+- **Survivorship bias**: Only measuring successful requests ignores failed/timed-out ones
+- **Alert on noise**: Thresholds without considering variance/seasonality
 
 ---
 
@@ -91,10 +95,10 @@
 
 **Time Series (Line/Area)**
 - Request rate, error rate, throughput over time
-- Multi-line: p50/p95/p99 latency on same chart (use separate y-axes if scales differ)
-- Overlay error rate on traffic graph (correlate issues with load)
+- Multi-line: p50/p95/p99 latency on same chart (separate y-axes if scales differ)
+- Overlay error rate on traffic graph to correlate issues with load
 - Area stacked: breakdown by endpoint, status code, tenant tier
-- Use log scale for metrics with wide ranges (1-10000)
+- Use log scale for wide ranges (1-10000)
 
 **Heatmaps**
 - Latency distribution over time (reveals bimodal patterns, gradual degradation)
@@ -195,6 +199,7 @@ Row 4: Impact Analysis
 ```
 
 ### Best Practices
+### Best Practices
 
 **Annotations**
 - Mark deployments (version, who, when)
@@ -235,11 +240,11 @@ Example: 99.9% SLO (0.1% error budget)
 **Alert Thresholds:**
 - **Critical (Page)**: 1hr window burn rate >14.4x (budget gone in 2 hrs)
 - **Warning (Ticket)**: 6hr window burn rate >6x (budget gone in 5 days)
-- **Multi-window**: Require BOTH short + long window breached (reduce false positives)
+- **Multi-window**: Require BOTH short + long window breached to reduce false positives
 
-**At low traffic (10 RPS):**
+**At low traffic:**
 - Use longer windows (6hr+) for statistical significance
-- Don't alert on <100 requests (sample size too small)
+- Don't alert on <100 requests - sample size is too small
 
 ### Critical (Page)
 - SLO burn rate >14.4x (1hr window)
@@ -270,7 +275,7 @@ payment.db.query.duration
 payment.cache.hit.count
 ```
 
-Make sure metric naming is consistent across services and layers
+Keep metric naming consistent across services and layers.
 
 ### Monitor Types
 - **Metric**: Threshold crossing
@@ -284,9 +289,9 @@ Make sure metric naming is consistent across services and layers
 ## Signal & Noise
 
 ### Signal-to-Noise Ratio
-- Signal = real system behavior, Noise = random fluctuations/errors
-- High SNR = actionable, Low SNR = alert fatigue
-- Increase SNR: longer windows, smoothing, percentiles not averages
+- Signal = real system behavior, Noise = random fluctuations
+- High SNR = actionable alerts, Low SNR = alert fatigue
+- Increase SNR: use longer windows, smoothing, percentiles instead of averages
 
 ### Variance & Thresholds
 - Set thresholds using σ: `threshold = baseline + (N × σ)`
@@ -307,8 +312,8 @@ Make sure metric naming is consistent across services and layers
 ### Outliers
 - Z-score: `(value - mean) / σ`, flag if |Z| >3
 - IQR: outlier if `value < Q1 - 1.5×IQR` or `value > Q3 + 1.5×IQR`
-- MAD: robust to extremes
-- Better: use distributions (p95, p99) instead of filtering
+- MAD: more robust to extremes
+- Better approach: use distributions (p95, p99) instead of filtering outliers
 
 ### Seasonality
 - Compare to same time last week: `week_before(metric)`
@@ -317,14 +322,14 @@ Make sure metric naming is consistent across services and layers
 
 ### Alert Windows
 - Too short = false positives, too long = delayed detection
-- Rule: window ≥ 3-5× noise frequency (30s fluctuation → 2-3min window)
-- Multi-window: 1min AND 10min both breached (reduces false positives)
+- Rule of thumb: window ≥ 3-5× noise frequency (30s fluctuation → 2-3min window)
+- Multi-window: require 1min AND 10min both breached to reduce false positives
 
 ### Sample Size
-- Small N = wide CI, low confidence (10 requests vs 10k requests)
-- 1 error / 2 requests = 50% ± 70% (meaningless)
-- Use Wilson score interval for proportions
-- Don't alert on insufficient samples
+- Small sample = wide confidence interval, low confidence (10 requests vs 10k requests)
+- 1 error / 2 requests = 50% ± 70% - meaningless
+- Use Wilson score interval for proportions (see sre_math.md)
+- Don't alert when you don't have enough samples
 
 ### Statistical Tests
 - Chi-squared: categorical (conversion rates)
