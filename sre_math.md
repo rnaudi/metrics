@@ -73,8 +73,6 @@ Each example below shows both approaches.
 
 **Goal**: Set thresholds that catch real problems without false positives.
 
-TODO:
-
 ---
 
 ## RED Metrics (Request-Level)
