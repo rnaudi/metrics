@@ -30,6 +30,7 @@
   - **API**: Latency, throughput, errors per endpoint
   - **Dependencies**: DB, HTTP clients, cache, external APIs
   - **Product**: Feature usage, conversion funnels, user behavior
+* (Note: This is a layer I personally like, see AWS and Netflix references for similar alternatives)
 
 ## Tagging Strategy
 
