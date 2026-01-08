@@ -10,6 +10,7 @@ Wide events are a powerful observability pattern where you capture **all context
 - [Canonical Log Lines](https://brandur.org/canonical-log-lines) by Brandur Leach
 - [All you need is Wide Events](https://isburmistrov.substack.com/p/all-you-need-is-wide-events-not-metrics) by Ivan Burmistrov
 - [Loggingsucks](https://loggingsucks.com/)
+- [Observability Wide Events 101](https://boristane.com/blog/observability-wide-events-101/)
 
 ## The Traditional Way (Multiple Log Lines)
 
