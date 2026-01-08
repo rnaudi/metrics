@@ -75,7 +75,11 @@ Each example below shows both approaches.
 
 ---
 
-TODO:
+## RED and USE Metrics
+
+I'm going to show some RED and USE metrics as they are quite standard. For front-end services monitoring are a good starter point.
+
+For more heavy backend and infrastructure services, I don't recommend following them blindly as data has different constraints and context.
 
 ## RED Metrics (Request-Level)
 
@@ -98,7 +102,9 @@ threshold = 200 + (3 × 85) = 455 req/s
 
 But this misses context - 50 req/s is normal on Sunday, catastrophic on Tuesday at 2pm.
 
-#### Better Approach: Time-of-Week Baseline
+We have two alternatives, **static** and **dynamic** thresholds.
+
+#### Static Threshold
 Calculate mean and σ for each hour-of-week bucket (7 days × 24 hours = **168 buckets**):
 ```
 Tuesday 2pm: μ = 300, σ = 25
@@ -106,8 +112,6 @@ Sunday 2pm: μ = 50, σ = 12
 ```
 
 **Implementation:** Configure this at the observability platform level (Datadog, Prometheus with recording rules). Pre-compute μ and σ for each of the 168 time-of-week buckets from historical data, then reference the current bucket in alert conditions.
-
-Note: This is still a static threshold. The 168 buckets are pre-computed and don't adapt unless you manually recalculate them.
 
 #### Threshold Options
 
@@ -128,20 +132,7 @@ threshold(current_time) = rolling_avg(same_hour_last_7d) - 3 × rolling_stddev(s
 # Calculates mean and σ from the last 7 occurrences of current hour
 # Tuesday 2pm uses data from: last 7 Tuesdays at 2pm
 ```
-Adapts automatically to traffic growth. More complex to debug. Can mask gradual degradation.
-
-#### Alert Rule
-```yaml
-# Low traffic alert (potential outage)
-alert: AuthServiceTrafficDropped
-condition: rate < μ(current_time) - 3σ(current_time)
-duration: 5 minutes
-severity: critical
-
-# Example: Tuesday 2pm
-# μ - 3σ = 300 - 75 = 225 req/s
-# Alert if rate < 225 for 5+ minutes
-```
+Adapts automatically to traffic growth. More complex to debug. Can mask gradual degradation. Can fail when change on distribution (last week a different version of a core library was running!). But for these signals, from a systems point of view, we want to be alerted.
 
 Adapts to daily patterns. 3σ gives 99.7% confidence (0.3% false positive rate). 5-minute duration filters transient dips.
 
@@ -672,9 +663,9 @@ severity: warning
 
 ### Problem: Low Traffic Edge Case
 
-**Scenario**: Weekend night, traffic drops to 10 req/s
+**Scenario**: Weekend night, traffic drops to 2 req/s
 ```
-5-min window: 600 requests
+5-min window: 600 requests (2 req/s × 60s × 5min)
 6 errors observed
 Error rate: 6/600 = 1%
 ```
@@ -683,29 +674,30 @@ Normal error rate is 0.02%. Should we alert?
 
 ### Wilson Score Confidence Interval
 ```
-p = 0.01 (observed)
-n = 300 (sample size)
-z = 1.96 (95% confidence)
+p = 0.01 (observed error rate: 6/600)
+n = 600 (sample size: total requests)
+z = 1.96 (95% confidence level)
 
 center = (p + z²/(2n)) / (1 + z²/n)
-       = (0.01 + 3.84/600) / (1 + 3.84/300)
-       = 0.0164 / 1.0128
-       = 0.0162
+       = (0.01 + 3.84/1200) / (1 + 3.84/600)
+       = (0.01 + 0.0032) / 1.0064
+       = 0.0131
 
 margin = z × sqrt(p(1-p)/n + z²/(4n²)) / (1 + z²/n)
-       = 1.96 × sqrt(0.01×0.99/300 + 3.84/(4×90000)) / 1.0128
-       = 1.96 × 0.00574 / 1.0128
-       = 0.011
+       = 1.96 × sqrt(0.01×0.99/600 + 3.84/1440000) / 1.0064
+       = 1.96 × sqrt(0.0000165 + 0.00000267) / 1.0064
+       = 1.96 × 0.00427 / 1.0064
+       = 0.0083
 
-CI = [0.0162 - 0.011, 0.0162 + 0.011]
-   = [0.5%, 2.7%]
+CI = [0.0131 - 0.0083, 0.0131 + 0.0083]
+   = [0.48%, 2.14%]
 ```
 
-**Analysis**: With 95% confidence, true error rate is somewhere between 0.5% and 2.7%.
+**Analysis**: With 95% confidence, true error rate is somewhere between 0.48% and 2.14%.
 
 **Baseline**: 0.02% is far outside this interval → statistically significant increase.
 
-**BUT**: Wide confidence interval due to small n. Could be transient.
+**BUT**: Wide confidence interval due to small sample size. Could be transient.
 
 ### Alert Logic with Sample Size
 ```yaml
@@ -794,74 +786,3 @@ action: "Contact SSO provider support"
    → Set control limits using μ ± 3σ
    → Require statistical significance (confidence intervals)
 ```
-
----
-
-## Practical Tips
-
-### 1. Start Conservative
-- Set thresholds wider than calculated
-- Tune based on false positive rate
-- Better to miss minor issues than wake up for noise
-
-### 2. Use Multi-Window Logic
-```
-ALERT = (short_window breached) AND (long_window breached)
-
-Example: 
-  (error_rate_5min > 0.1%) AND (error_rate_30min > 0.05%)
-```
-
-Reduces false positives by 80-90%.
-
-### 3. Require Minimum Sample Size
-```
-ALERT = (metric > threshold) AND (sample_size > minimum)
-
-Example:
-  (error_rate > 0.1%) AND (requests > 100)
-```
-
-Avoids alerting on 1 error out of 5 requests.
-
-### 4. Seasonal Baselines
-For metrics with strong patterns:
-- Weekday vs weekend thresholds
-- Business hours vs off-hours thresholds
-- Holiday period adjustments
-
-### 5. Test with Historical Data
-Before deploying:
-```
-# Query last 30 days
-# Apply threshold logic
-# Count how many alerts would have fired
-# Investigate each one:
-#   - Was it a real issue? (true positive)
-#   - Was it noise? (false positive)
-# 
-# Target: <5% false positive rate
-```
-
-### 6. Document Reasoning
-For each alert, document:
-```yaml
-alert: AuthServiceErrorRateHigh
-threshold: 0.05%
-reasoning: |
-  - Baseline: 0.02% (last 90 days)
-  - p99: 0.042%
-  - 0.05% = 2.5x baseline = clear degradation
-  - At 200 req/s, 0.05% = 6 errors/min = user-impacting
-  - SLO: 99.95% (0.05% budget)
-last_tuned: 2024-01-15
-false_positive_rate: 2% (last 30 days)
-```
-
----
-
-## Further Reading
-
-- [sre.md](sre.md) - Observability patterns, dashboards, anti-patterns
-- [README.md](README.md) - Journey metrics methodology with detailed math
-- [Google SRE Book - Alerting on SLOs](https://sre.google/workbook/alerting-on-slos/)
