@@ -2,6 +2,10 @@
 
 Monitor multi-step authentication flows (login, MFA, OAuth) using simple request counters and ratios. Track end-to-end conversion with control charts.
 
+Reference: [Evolution of SRE at Google](https://www.usenix.org/publications/loginonline/evolution-sre-google)
+
+> **Note**: This is a really innovative idea used in Google, Meta, Netflix... Public information is scarce.
+
 ---
 
 ## Core idea
