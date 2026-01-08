@@ -73,15 +73,17 @@
 - Group tags: `status:5xx` not `status:500|501|502|503`
 
 
-### Custom metrics vs wide events
+### Custom Metrics vs Wide Events
 
-Since approx. >2020, new tools like Honeycomb have been built on top of OLAP databases (like Clickhouse) to improve logs and events analysis. Hence the school of wide events, structured wide events, normally on top of OpenTelemtry was born.
+Since around 2020, new tools like Honeycomb have been built on OLAP databases (like ClickHouse) to improve log and event analysis. This led to the wide events approach - structured events, usually built on OpenTelemetry.
 
-Still on innovation stage, I'd recommend to take a look into it. In my experience wide events remove most of custom metrics and the need of all traditional tracing tools.
+Still in the innovation stage, worth looking into. In my experience (I've worked with an in-house Datadog/Honeycomb), wide events eliminate most custom metrics and replace traditional tracing tools.
 
-Still, the same tagging ideas described are applied to wide events here. Wide events are like distribution/timers. The biggest trade-off is log sampling. 
+The same tagging principles apply to wide events. Wide events work like distributions/timers. The main trade-off is log sampling.
 
 ---
+
+The following sections summarize key concepts from "SRE with Java Microservices" (see references above). Takes about 2-3 hours to read, and you can skim some sections.
 
 ### Anti-Patterns
 
