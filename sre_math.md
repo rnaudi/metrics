@@ -2,6 +2,23 @@
 
 > **Note:** How to set correct thresholds for alerts using real data and statistics. Examples based on an authentication service handling 200 req/s.
 
+## Why This Matters
+
+Bad metrics make analysis impossible. Use the right metrics type for each data.
+
+Bad thresholds create two problems:
+- Alert when nothing is wrong (alert fatigue, ignored pages)
+- Don't alert when things are broken (outages you don't know about)
+
+This guide helps you find the middle ground using your actual service data.
+
+## Statistical Notation Quick Reference
+
+- μ (mu) = mean/average
+- σ (sigma) = standard deviation (how spread out the data is)
+- p95 = 95th percentile (95% of values are below this)
+- n = sample size (number of data points)
+
 ## Validation Checklist
 
 - [ ] **Zero denominators**: Does it handle `requests = 0` safely? (`errors / max(requests, 1)`)
@@ -26,30 +43,29 @@
 
 ## The Process
 
-### Five-Step Monitor Definition
+### Four-Step Monitor Definition
 
 Every monitor follows this process:
 
-0. **What question are you answering?** Start here, not with the metric.
-   - Example: "Is the service processing requests?" → measure request rate
-   - Example: "Are users experiencing errors?" → measure error rate
-   - Example: "Is the service responsive?" → measure latency
+1. **What question are you answering?** 
+   - "Is the service processing requests?" → measure request rate
+   - "Are users experiencing errors?" → measure error rate
+   - "Is the service responsive?" → measure latency
 
 **Metrics are for systems** (automated alerting, investigation). **Visualizations are for humans** (dashboards, intuition).
 
-1. **Identify the metric**: What are you measuring? (request rate, error rate, latency, CPU, memory, etc.)
+2. **Identify the metric**: What are you measuring? (request rate, error rate, latency, CPU, memory, etc.)
    - Determine metric type: distribution, timer, counter, ratio
 
-2. **Analyze distribution properties**: How does this metric behave?
+3. **Analyze distribution properties**: How does this metric behave?
    - Calculate statistical properties: mean, standard deviation, percentiles
    - Identify patterns: stable vs variable, seasonal vs constant, bimodal distribution
    - Check for outliers and anomalies in baseline data
 
-3. **Choose threshold approach**: Based on properties, what detects failures best?
+4. **Choose threshold approach**: Based on properties, what detects failures best?
    - Static thresholds: simple, predictable, require manual tuning
    - Dynamic thresholds: adaptive, complex, require sufficient data volume
-   
-4. **Validate thresholds**. Simulate historical incidents. Would alerts fire? Deploy to staging with lower thresholds.
+   - Validate thresholds by simulating historical incidents. Would alerts fire? Deploy to staging with lower thresholds.
 
 ### Static vs Dynamic Thresholds
 
@@ -77,7 +93,7 @@ Each example below shows both approaches.
 
 ## RED and USE Metrics
 
-I'm going to show some RED and USE metrics as they are quite standard. For front-end services monitoring are a good starter point.
+RED and USE metrics provide a standard framework for monitoring services. For front-end services, they are a good starting point.
 
 For more heavy backend and infrastructure services, I don't recommend following them blindly as data has different constraints and context.
 
@@ -116,7 +132,6 @@ Sunday 2pm: μ = 50, σ = 12
 #### Threshold Options
 
 **Option A: Static Time-of-Week Baseline**
-**Option A: Static Time-of-Week Baseline**
 ```
 threshold(hour, day) = μ(hour, day) + 3σ(hour, day)
 
@@ -132,7 +147,7 @@ threshold(current_time) = rolling_avg(same_hour_last_7d) - 3 × rolling_stddev(s
 # Calculates mean and σ from the last 7 occurrences of current hour
 # Tuesday 2pm uses data from: last 7 Tuesdays at 2pm
 ```
-Adapts automatically to traffic growth. More complex to debug. Can mask gradual degradation. Can fail when change on distribution (last week a different version of a core library was running!). But for these signals, from a systems point of view, we want to be alerted.
+Adapts automatically to traffic growth. More complex to debug. Can mask gradual degradation if last week's baseline was already degraded (e.g., you deployed a slow library version last Tuesday, now it's "normal"). For traffic drops, you usually want to be alerted regardless of recent trends.
 
 Adapts to daily patterns. 3σ gives 99.7% confidence (0.3% false positive rate). 5-minute duration filters transient dips.
 
@@ -673,6 +688,13 @@ Error rate: 6/600 = 1%
 Normal error rate is 0.02%. Should we alert?
 
 ### Wilson Score Confidence Interval
+
+When you have low traffic, a single error can make the error rate look terrible. Wilson Score tells you: "given this sample size, what's the real error rate likely to be?"
+
+**When to use this:** Traffic < 1000 requests in your alert window.
+
+**Simple rule:** If n < 100, don't alert on error rate alone. Require longer duration or multiple windows.
+
 ```
 p = 0.01 (observed error rate: 6/600)
 n = 600 (sample size: total requests)
@@ -756,6 +778,13 @@ action: "Contact SSO provider support"
 ## Summary: Threshold Setting Decision Tree
 
 ```
+0. Just starting? Don't have baseline data yet?
+   → Use conservative absolute thresholds:
+     - Error rate > 1%
+     - p99 latency > 1s
+     - CPU > 80%
+   → Tune after 1-2 weeks of data
+
 1. Is it a CAPACITY metric (CPU, memory, connections)?
    → Use load testing to find saturation point
    → Set threshold below saturation (e.g., 70% for 80% saturation)
