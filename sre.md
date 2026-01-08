@@ -72,6 +72,13 @@
 - Remove unused metrics after 30 days
 - Group tags: `status:5xx` not `status:500|501|502|503`
 
+
+### Custom metrics vs wide events
+
+Since approx. >2020, new tools like Honeycomb have been built on top of OLAP databases (like Clickhouse) to improve logs and events analysis. Hence the school of wide events, structured wide events, normally on top of OpenTelemtry was born.
+
+Still on innovation stage, I'd recommend to take a look into it. In my experience wide events remove most of custom metrics and the need of all traditional tracing tools.
+
 ---
 
 ### Anti-Patterns
