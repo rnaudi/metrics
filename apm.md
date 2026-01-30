@@ -27,3 +27,68 @@ See [events.md](events.md) for wide events patterns.
 
 ---
 
+## Troubleshooting with Enriched Traces
+
+Using custom tags: `platform`, `api_key`, `user_id` + standard APM fields (error.message, http.status, duration, etc.)
+
+### Exception Investigation
+**Q**: User reports "invalid email" error – what happened?  
+**A**: Search `error.message:"invalid email"` + `user_id` → find full trace with: which platform triggered it, API key used, request timing, full stack trace.
+
+**Q**: Token refresh failing for specific API key?  
+**A**: Filter `error.message:"token"` + `api_key` → see all failures for that key: platform distribution, affected users, error rate over time.
+
+**Q**: "NullPointerException" in auth flow – reproduction path?  
+**A**: Search `error.message:"NullPointer"` + trace spans → see: which endpoint, request parameters, upstream service calls, timing when NPE occurred.
+
+### Performance Issues
+**Q**: Why is OpenID login slow for mobile platforms?  
+**A**: Group by `platform:"mobile"` + `http.endpoint:"/auth/openid"` → compare duration with web/desktop, identify mobile-specific latency.
+
+**Q**: Which API keys have slowest authentication?  
+**A**: Histogram `duration` grouped by `api_key` → identify problematic integrations, correlate with platforms using those keys.
+
+**Q**: Device login P99 latency spiking – which users affected?  
+**A**: Filter `http.endpoint:"/auth/device"` + `duration > p99` → examine: user distribution, platform breakdown, API key patterns, time of day.
+
+### API Key Management
+**Q**: New API key integration causing errors – what's failing?  
+**A**: Filter `api_key:"key_xyz"` + `http.status >= 400` → see: error types, which endpoints fail, platform distribution, affected users.
+
+**Q**: Rate limiting one API key – legitimate or abuse?  
+**A**: Query `api_key` + `http.status:429` → check: request volume, user_id cardinality (many users or one?), platform consistency.
+
+**Q**: API key used from unexpected platform – security issue?  
+**A**: Filter `api_key:"web_key"` + `platform:"android"` → detect misconfiguration or credential leak across platform boundaries.
+
+### User-Specific Issues
+**Q**: Single user experiencing intermittent auth failures?  
+**A**: Search `user_id` + `http.status >= 400` → timeline of failures: which platforms, which API keys, error patterns, success rate.
+
+**Q**: User stuck in OTT polling loop – when did it start?  
+**A**: Filter `user_id` + `http.endpoint:"/auth/ott/poll"` → view: poll frequency, duration between polls, when polling started, platform.
+
+**Q**: Password auth works but social login fails for user?  
+**A**: Compare `user_id` + `http.endpoint:"/auth/password"` vs `http.endpoint:"/auth/oauth"` → see: success rates, error differences, platform correlation.
+
+### Platform Segmentation
+**Q**: Android app auth slower than iOS – backend issue?  
+**A**: Compare `platform:"android"` vs `platform:"ios"` + same `http.endpoint` → filter out client-side latency, focus on backend duration.
+
+**Q**: Web platform errors spiking – deployment related?  
+**A**: Filter `platform:"web"` + `http.status >= 500` + last 30m → correlate with deployment timestamp, identify affected API keys.
+
+**Q**: iOS device login broken after release – configuration drift?  
+**A**: Query `platform:"ios"` + `http.endpoint:"/auth/device"` + today → compare error rate with historical, check API key changes.
+
+### Cross-Dimensional Analysis
+**Q**: Which platform + API key combination has worst performance?  
+**A**: Group by `platform` + `api_key` → heatmap of duration, identify problematic integration patterns.
+
+**Q**: High error rate on endpoint – is it specific users or broad?  
+**A**: Filter `http.endpoint` + `http.status >= 400` → group by `user_id` cardinality: many users = service issue, few users = account problem.
+
+**Q**: OTT flow failing for users from specific API integration?  
+**A**: Search `api_key` + `http.endpoint:"/auth/ott"` + errors → trace shows: which users, which platforms, token generation vs validation failure.
+
+---
