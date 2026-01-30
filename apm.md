@@ -92,3 +92,26 @@ Using custom tags: `platform`, `api_key`, `user_id` + standard APM fields (error
 **A**: Search `api_key` + `http.endpoint:"/auth/ott"` + errors → trace shows: which users, which platforms, token generation vs validation failure.
 
 ---
+
+## Retention & Metrics Strategy
+
+### APM Traces
+- **Retention**: 15 days – ideal for recent incident investigation and debugging.
+- **Use case**: deep dive into individual requests with full context (spans, tags, errors, timing).
+- **Limitation**: short-term only – cannot analyze trends beyond 2 weeks.
+
+### Custom Metrics from Traces
+- **Retention**: 15 months – enables long-term trend analysis and capacity planning.
+- **Approach**: generate metrics from trace tags for aggregated views without raw trace storage.
+- **Examples**:
+  - Error rates: `count(http.status >= 400)` by `platform`, `api_key`, `http.endpoint`
+  - Latency percentiles: `p50/p95/p99(duration)` by `platform`, `api_key`
+  - Request volume: `count(*)` by `platform`, `api_key`, `user_id` cardinality
+  - Platform distribution: `count(*)` by `platform` over time
+
+### When to Use Each
+- **Traces (15d)**: "Why did this specific request fail?" – detailed debugging, stack traces, user reproduction.
+- **Metrics (15m)**: "Is our iOS error rate trending up?" – historical patterns, capacity planning, SLO tracking.
+- **Combination**: use metrics to detect anomalies, drill into traces for root cause within retention window.
+
+---
